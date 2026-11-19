@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import shutil
@@ -52,6 +53,7 @@ from app.catalog.deezer import CatalogNotFound
 from app.catalog.models import split_ref
 from app.catalog.yandex import russian_original
 from app.config import get_settings
+from app.library.storage import require_space
 from app.db import session_scope
 from app.jobs.downloads import (
     MAX_TRIES_PER_PROVIDER,
@@ -122,6 +124,7 @@ class Choice:
     nd_song_id: str | None = None  # kind "library", once Navidrome has scanned the file
     source: StreamSource | None = None  # upstream that opened last (URL after redirects); renewed when it fails
     local: Path | None = None  # "full" from a source without plain HTTP audio: the copy the Hub downloaded
+    local_type: str | None = None
     heard: bool = False  # the user has listened to it
     verified: bool = False  # "full": the candidate passed the track-page check (or needs none)
     checking: asyncio.Task | None = None  # the check after the first listen
@@ -248,11 +251,11 @@ async def open_media(ref: str, range_header: str | None, *, ahead: bool = False,
         if c.kind == "library":
             assert c.path is not None
             return await _lighten(c, Media(c, path=c.path), c.path, _library_ident(c.path), ahead) if lite                 else Media(c, path=c.path)
-        if _downloads_only(c):
+        if (c.local is not None and c.local.is_file()) or _downloads_only(c):
             await _predownload(c)
             _heard(c)
             assert c.local is not None
-            media = Media(c, path=c.local, media_type=local_media_type(c.local))
+            media = Media(c, path=c.local, media_type=c.local_type or local_media_type(c.local))
             return await _lighten(c, media, c.local, _file_ident(c), ahead) if lite else media
         if c.kind != "full":
             break
@@ -805,6 +808,8 @@ async def _library_file(query: dict) -> tuple[Path | None, str | None]:
 async def _opens(choice: Choice) -> bool:
     """Ask the upstream for one byte: a dead link or an HTML page instead of audio moves on to the next file. A
     source without plain HTTP audio: download the copy that will play."""
+    if choice.local is not None and choice.local.is_file():
+        return True
     if _downloads_only(choice):
         try:
             await _predownload(choice)
@@ -875,6 +880,8 @@ async def _predownload(c: Choice) -> Path:
     elif not in_background():
         job.prio.foreground()
     c.local = await asyncio.shield(job.task)
+    if get_settings().cfg.library.persistent_audio_cache:
+        await asyncio.to_thread(_save_audio_copy, c, c.local)
     return c.local
 
 
@@ -903,7 +910,7 @@ def _local_name(ref: str) -> str:
 def prune_local(root: Path, busy: set[str], now: float | None = None) -> None:
     """Copies unused for `LOCAL_KEEP_S` go, and the least recently used ones while all of them take more than
     `LOCAL_MAX_BYTES`. Copies being downloaded (`busy` folder names) stay."""
-    if not root.is_dir():
+    if get_settings().cfg.library.persistent_audio_cache or not root.is_dir():
         return
     now = time.time() if now is None else now
     dirs: list[tuple[float, int, Path]] = []
@@ -918,6 +925,34 @@ def prune_local(root: Path, busy: set[str], now: float | None = None) -> None:
             break
         shutil.rmtree(d, ignore_errors=True)
         total -= size
+
+
+def _save_audio_copy(c: Choice, path: Path, media_type: str | None = None) -> None:
+    payload = {**_payload(c), "local_type": media_type or c.local_type or local_media_type(path)}
+    data = {"ref": c.ref, "file": path.name, "size": path.stat().st_size, "choice": payload}
+    part = path.parent / "complete.json.part"
+    part.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(part, path.parent / "complete.json")
+
+
+def _cached_audio(ref: str) -> tuple[dict, Path] | None:
+    if not get_settings().cfg.library.persistent_audio_cache:
+        return None
+    folder = get_settings().staging_dir / LOCAL_DIR / _local_name(ref)
+    manifest = folder / "complete.json"
+    if not manifest.is_file():
+        return None
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        name = data["file"]
+        if not isinstance(name, str) or Path(name).name != name or data["ref"] != ref:
+            raise ValueError("invalid cache identity")
+        path = folder / name
+        if path.is_file() and path.stat().st_size == data["size"] and data["size"] > 0:
+            return data["choice"], path
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        log.warning("listen %s: invalid persistent audio cache: %s", ref, e)
+    return None
 
 
 # --- server copies ---------------------------------------------------------------------------------------------
@@ -990,7 +1025,9 @@ async def _download_copy(c: Choice, cp: _Copy) -> None:
     f = None
     try:
         await asyncio.to_thread(prune_local, cp.path.parent.parent, _busy_dirs())
+        await asyncio.to_thread(require_space, cp.path, 64 * 2**20)
         await asyncio.to_thread(cp.path.parent.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread((cp.path.parent / "complete.json").unlink, missing_ok=True)
         f = await asyncio.to_thread(open, cp.path, "wb", buffering=0)  # unbuffered: readers see every byte written
         drops = 0
         while not cp.done:
@@ -1008,11 +1045,13 @@ async def _download_copy(c: Choice, cp: _Copy) -> None:
                     cp.have = 0
                 if cp.size is None:
                     cp.size = _total_size(resp)
+                    await asyncio.to_thread(require_space, cp.path, cp.size or 0)
                     ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
                     cp.media_type = ctype if ctype.startswith("audio/") else src.media_type
                     await cp.changed()
                 async for chunk in resp.aiter_raw():
                     await _yield_to_played(cp)
+                    await asyncio.to_thread(require_space, cp.path, len(chunk))
                     await asyncio.to_thread(_write_all, f, chunk)
                     cp.have += len(chunk)
                     drops = 0
@@ -1028,6 +1067,8 @@ async def _download_copy(c: Choice, cp: _Copy) -> None:
             if cp.size is None or cp.have >= cp.size:
                 cp.size = cp.have
                 cp.done = True
+        if get_settings().cfg.library.persistent_audio_cache:
+            await asyncio.to_thread(_save_audio_copy, c, cp.path, cp.media_type)
         log.info("listen %s: server copy %d KB (%.1f s%s)", c.ref, cp.have // 1024, time.monotonic() - t0,
                  ", ahead" if cp.prio.background else "")
     except ListenError as e:
@@ -1269,19 +1310,23 @@ def _outranked(provider: str, pquery: dict, sources: list[str]) -> bool:
 async def _remembered(ref: str, *, library: bool = True) -> Choice | None:
     """The remembered pick (without an opened link); an owned track plays from the library instead."""
     try:
-        d = await cache_get(_key(ref))
+        cached = await asyncio.to_thread(_cached_audio, ref)
+        d = cached[0] if cached else await cache_get(_key(ref))
         if not d:
             return None
         cand = Candidate(**d["candidate"]) if d.get("candidate") else None
         c = Choice(ref, d["kind"], d["artist"], d["title"], d.get("duration_s"), candidate=cand,
                    alternates=[Candidate(**a) for a in d.get("alternates") or []], query=d.get("query"),
                    pquery=d.get("pquery"), heard=bool(d.get("heard")), verified=bool(d.get("verified")))
+        if cached:
+            c.local = cached[1]
+            c.local_type = d.get("local_type")
     except Exception as e:
         log.warning("listen %s: remembered pick unreadable: %r", ref, e)
         return None
     if c.kind == "full" and c.candidate is None:
         return None
-    if (c.kind == "full" and c.candidate is not None and c.pquery
+    if (not cached and c.kind == "full" and c.candidate is not None and c.pquery
             and _outranked(c.candidate.provider, c.pquery, d.get("sources") or [])):
         return None  # picked before a preferred source was added (YouTube after SoundCloud for Russian tracks)
     if library and c.query:

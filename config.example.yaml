@@ -67,6 +67,8 @@ uploads:
   extensions: [mp3, m4a, aac, flac, ogg, opus, wav]
 
 library:
+  persistent_audio_cache: false
+  min_free_gb: 5
   trash_days: 30
   backup_hour: 4   # local time; daily copy of Hub and Navidrome DBs to MUSIC_ROOT/.backups
 

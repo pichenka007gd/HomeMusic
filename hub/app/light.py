@@ -27,6 +27,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.library.probe import ProbeError, ffmpeg_bin, probe
+from app.library.storage import require_space
 from app.net import Priority, PrioritySemaphore, in_background, priority_context
 
 log = logging.getLogger(__name__)
@@ -175,6 +176,7 @@ async def _encode(src: Path, key: str) -> Path:
     async with _sem:
         if await asyncio.to_thread(dest.is_file):
             return dest
+        await asyncio.to_thread(require_space, dest, src.stat().st_size)
         t0 = time.monotonic()
         await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
         try:

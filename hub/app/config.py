@@ -91,6 +91,8 @@ class UploadsCfg(BaseModel):
 class LibraryCfg(BaseModel):
     trash_days: int = 30
     backup_hour: int = 4
+    persistent_audio_cache: bool = False
+    min_free_gb: float = Field(default=5, ge=0)
 
 
 class MixesCfg(BaseModel):

@@ -366,6 +366,7 @@ async def test_sign_in_by_code(env):
     imp = r.json()
     assert imp["status"] == "auth" and imp["auth"]["user_code"] == "abcd1234"
     assert set(imp["auth"]) == {"user_code", "verification_url", "expires_at"}  # the device code stays in the Hub
+    assert (await jobs("import_auth"))[0].priority > 0
     await run_imports()
     assert (await c.get(f"/api/imports/{imp['id']}")).json()["status"] == "auth"
 
@@ -374,6 +375,38 @@ async def test_sign_in_by_code(env):
     imp = (await c.get(f"/api/imports/{imp['id']}")).json()
     assert imp["status"] == "preview" and imp["auth"] is None and imp["has_token"]
     assert env["state"]["fetches"] == [("tok", None)]
+
+
+async def test_sign_in_and_snapshot_are_claimable_during_background_downloads(env):
+    from app.db import session_scope
+    from app.jobs import queue
+    from app.models import Job
+
+    c, mock = env["client"], env["mock"]
+    mock.post("https://oauth.yandex.ru/device/code").respond(200, json={
+        "device_code": "dc", "user_code": "abcd1234", "verification_url": "https://ya.ru/device",
+        "interval": 0, "expires_in": 300})
+    mock.post("https://oauth.yandex.ru/token").respond(200, json={"access_token": "tok"})
+    async with session_scope() as s:
+        for _ in range(queue.background_slots()):
+            s.add(Job(kind="download_item", status="running", priority=queue.PRIORITY_IMPORT,
+                      payload_json={}, attempts=1))
+        await queue.enqueue(s, "download_item", {}, priority=queue.PRIORITY_IMPORT)
+    response = await c.post("/api/imports", json={"method": "device"})
+    assert response.status_code == 200
+    auth = (await jobs("import_auth"))[0]
+    from app.models import utcnow
+    async with session_scope() as s:
+        queued = await s.get(Job, auth.id)
+        queued.run_after = utcnow()
+    job = await queue._claim("auth-test")
+    assert job is not None and job.kind == "import_auth"
+    await queue.run_job(job)
+    job = await queue._claim("fetch-test")
+    assert job is not None and job.kind == "import_fetch"
+    await queue.run_job(job)
+    imp = (await c.get(f"/api/imports/{response.json()['id']}")).json()
+    assert imp["status"] == "preview"
 
 
 async def test_profile_link(env):

@@ -24,6 +24,7 @@ from app.jobs.downloads import enqueue_scan
 from app.jobs.queue import notify
 from app.library import probe, tagger
 from app.library.importer import ImportSpec, import_file
+from app.library.storage import StorageFull, require_space
 from app.models import Album, Upload, User
 
 log = logging.getLogger(__name__)
@@ -49,11 +50,13 @@ def _abs(u: Upload) -> Path:
 
 def _copy_limited(src, dest: Path, limit: int) -> int:
     n = 0
+    require_space(dest)
     with dest.open("wb") as out:
         while chunk := src.read(CHUNK):
             n += len(chunk)
             if n > limit:
                 raise ValueError("too large")
+            require_space(dest, len(chunk))
             out.write(chunk)
     return n
 
@@ -74,6 +77,9 @@ async def upload(files: list[UploadFile] = File(...), user: User = Depends(curre
         _upload_dir(user.id)
         try:
             size = await asyncio.to_thread(_copy_limited, f.file, dest, limit)
+        except StorageFull as e:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(507, str(e)) from e
         except ValueError:
             dest.unlink(missing_ok=True)
             raise HTTPException(413, f"Файл больше {cfg.max_file_mb} МБ: {name}") from None

@@ -169,6 +169,7 @@ def make_client(
         transport = httpx.AsyncHTTPTransport(proxy=s.outbound_proxy, http2=http2)
         for h in hosts:
             mounts[f"all://{h}"] = transport
+            mounts[f"all://*.{h}"] = transport
     h = {"User-Agent": DEFAULT_UA}
     h.update(headers or {})
     return httpx.AsyncClient(

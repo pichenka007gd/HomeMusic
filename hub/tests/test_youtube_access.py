@@ -139,12 +139,12 @@ async def test_metadata_is_coalesced_cached_and_invalidated_on_cookie_replacemen
     assert len(calls) == 3
 
 
-def test_youtube_opts_select_mweb_and_internal_provider_without_affecting_soundcloud(monkeypatch):
+def test_youtube_opts_use_upstream_clients_and_internal_provider_without_affecting_soundcloud(monkeypatch):
     monkeypatch.setenv("YTDLP_POT_BASE_URL", "http://youtube-pot:4416")
     cfg = YtdlpCfg()
     for p in (YtdlpProvider(cfg), YtReuploadProvider(cfg)):
         with p._youtube_dl({}) as ydl:
-            assert ydl.params["extractor_args"]["youtube"]["player_client"] == ["mweb"]
+            assert "player_client" not in ydl.params["extractor_args"].get("youtube", {})
             assert ydl.params["extractor_args"]["youtubepot-bgutilhttp"]["base_url"] == ["http://youtube-pot:4416"]
             assert ydl.params["sleep_interval_requests"] == 1
             assert ydl.params["sleep_interval"] == 5

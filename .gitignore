@@ -1,6 +1,9 @@
 # secrets and local config
 .env
 config.yaml
+docker-compose.override.yml
+.hm-cookies
+**/.test-tmp/
 gateway/tunnel/tunnel_key
 gateway/tunnel/tunnel_key.pub
 gateway/tunnel/known_hosts

@@ -449,12 +449,14 @@ async def reconcile(s: AsyncSession, user: User, body: dict, *, now: datetime | 
     # a type are quarantined until verified enrichment or a real own decision, never guessed.
     subjects = list((await s.execute(select(FavoriteSubject))).scalars())
     index = AliasIndex([x.event for x in before.values()], subjects)
+    known = {(row.target_type, alias): row for row in subjects for alias in row.aliases or []}
     verified_refs = {(x.target_type, f"ref:{x.ref}") for x in subjects if x.ref and x.nd_id}
     legacy_types = {typ for typ, key in provenance if typ != "track" and key.startswith("ref:") and
                     not any(index.root((typ, key)) == index.root(verified) for verified in verified_refs)}
     imported = {index.root(k) for k in provenance}
     have: dict[tuple[str, str], FavoriteTarget] = {}
     dates = {}
+    observations = []
     for typ, list_name in ND_LISTS.items():
         for obj in body.get(list_name, []):
             if not isinstance(obj, dict) or not obj.get("id"):
@@ -463,15 +465,23 @@ async def reconcile(s: AsyncSession, user: User, body: dict, *, now: datetime | 
                                     target_data={k: obj[k] for k in ("name", "artist", "title", "duration") if k in obj})
             key = index.key(target)
             have[key], dates[key] = target, parse_time(obj.get("starred"))
-            await remember(s, target)
+            row = known.get((typ, f"nd:{obj['id']}"))
+            if row is None or any((row.data or {}).get(k) != v for k, v in subject_data(target.target_data).items()):
+                observations.append(target)
+    mirrored = set()
+    for key, state in before.items():
+        if state.event.mirror_pending and nd is not None and state.nd_id:
+            await (nd.star if state.liked else nd.unstar)(**{
+                "song_ids" if state.target_type == "track" else state.target_type + "_ids": [state.nd_id]})
+            mirrored.add(key)
+    for target in observations:
+        await remember(s, target)
     changed = 0
     for key in sorted(before.keys() | have.keys()):
         state, target = before.get(key), have.get(key)
         if state and state.event.mirror_pending:
             # A failed own delivery is retried, never interpreted as an outside unstar.
-            if nd is not None and state.nd_id:
-                await (nd.star if state.liked else nd.unstar)(**{
-                    "song_ids" if state.target_type == "track" else state.target_type + "_ids": [state.nd_id]})
+            if key in mirrored:
                 state.event.mirror_pending = False
             continue
         if state and now - state.received_at < GRACE:
@@ -511,7 +521,9 @@ async def sync_user(user: User) -> int:
         body = await nd.get_starred2()
         async with session_scope() as s:
             await enrich_pending_subjects(s, nd)
+            await s.commit()
             await recover_import_subjects(s, user.id, body, nd)
+            await s.commit()
             return await reconcile(s, user, body, nd=nd)
     finally:
         await nd.aclose()
@@ -524,6 +536,7 @@ async def enrich_pending_subjects(s: AsyncSession, nd) -> None:
 
     rows = list((await s.execute(select(FavoriteSubject).where(FavoriteSubject.nd_id.is_(None),
                     FavoriteSubject.target_type.in_(("album", "artist"))))).scalars())
+    targets = []
     for row in rows:
         try:
             nd_id = None
@@ -541,10 +554,12 @@ async def enrich_pending_subjects(s: AsyncSession, nd) -> None:
                 if len(matches) == 1:
                     nd_id = matches[0].get("id")
             if nd_id:
-                await remember(s, FavoriteTarget(target_type=row.target_type, ref=row.ref,
+                targets.append(FavoriteTarget(target_type=row.target_type, ref=row.ref,
                     **{ND_FIELDS[row.target_type]: nd_id}, target_data=row.data))
         except Exception as exc:
             log.info("favorite subject %s/%s deferred: %r", row.target_type, row.ref, exc)
+    for target in targets:
+        await remember(s, target)
 
 
 async def recover_import_subjects(s: AsyncSession, user_id: int, body: dict, nd) -> None:
@@ -559,6 +574,7 @@ async def recover_import_subjects(s: AsyncSession, user_id: int, body: dict, nd)
         ImportItem.ref.is_not(None)))).all()
     subjects = list((await s.execute(select(FavoriteSubject))).scalars())
     verified = {(x.target_type, x.ref) for x in subjects if x.ref and x.nd_id}
+    recovered = []
     for imp, item, kind in rows:
         typ = "album" if kind == "albums" else "artist"
         if (typ, item.ref) in verified:
@@ -583,13 +599,15 @@ async def recover_import_subjects(s: AsyncSession, user_id: int, body: dict, nd)
                     nd_id = matches[0].get("id")
             if not nd_id:
                 continue
-            await remember(s, FavoriteTarget(target_type=typ, ref=item.ref, **{ND_FIELDS[typ]: nd_id},
-                                              target_data=item.raw_json))
+            recovered.append((imp, typ, nd_id, FavoriteTarget(target_type=typ, ref=item.ref,
+                              **{ND_FIELDS[typ]: nd_id}, target_data=item.raw_json)))
             verified.add((typ, item.ref))
-            # A verified relationship is metadata even when the imported star has already been removed.
-            if any(obj.get("id") == nd_id for obj in body.get(ND_LISTS[typ], [])):
-                opt = "liked_album_ids" if typ == "album" else "liked_artist_ids"
-                opts = imp.options_json or {}
-                imp.options_json = {**opts, opt: list(dict.fromkeys([*(opts.get(opt) or []), nd_id]))}
         except Exception as exc:
             log.info("favorite import metadata %s/%s deferred: %r", typ, item.ref, exc)
+    for imp, typ, nd_id, target in recovered:
+        await remember(s, target)
+        # A verified relationship is metadata even when the imported star has already been removed.
+        if any(obj.get("id") == nd_id for obj in body.get(ND_LISTS[typ], [])):
+            opt = "liked_album_ids" if typ == "album" else "liked_artist_ids"
+            opts = imp.options_json or {}
+            imp.options_json = {**opts, opt: list(dict.fromkeys([*(opts.get(opt) or []), nd_id]))}

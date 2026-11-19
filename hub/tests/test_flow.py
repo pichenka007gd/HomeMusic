@@ -168,6 +168,28 @@ async def run_one_job() -> None:
     await run_job(job)
 
 
+async def test_scans_coalesce_queued_library_analysis(env, monkeypatch):
+    from sqlalchemy import select
+
+    from app.config import get_settings
+    from app.db import session_scope
+    from app.jobs import downloads
+    from app.models import Job
+
+    get_settings().embedder_url = "http://embedder.test"
+
+    async def linked(nd):
+        return 1
+
+    monkeypatch.setattr(downloads, "link_unlinked", linked)
+    for _ in range(2):
+        await downloads.handle_scan(Job(kind="nd_scan", payload_json={}))
+    async with session_scope() as s:
+        queued = (await s.execute(select(Job).where(
+            Job.kind == "embed_library", Job.status == "queued"))).scalars().all()
+    assert len(queued) == 1
+
+
 async def test_download_import_scan_playlist_dedupe(env):
     c = env["client"]
     r = await c.post("/api/downloads", json={

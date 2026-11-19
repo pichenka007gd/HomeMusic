@@ -1,6 +1,6 @@
 """An import's life: sign-in → fetch (a snapshot of the collection) → preview → matching in batches → apply.
 
-Job kinds (all below the user's work in the queue: `PRIORITY_IMPORT`):
+Auth and snapshot fetching take foreground slots; bulk import work uses `PRIORITY_IMPORT`:
 - `import_auth`      — waits for the user to confirm the sign-in code, then fetches
 - `import_fetch`     — reads the collection from the service into collections and items, checks the library
 - `import_resolve`   — matches a batch of rows (`resolve.py`) and acts on them (`apply.py`), queues the next batch
@@ -45,6 +45,8 @@ from app.security import decrypt, encrypt
 log = logging.getLogger(__name__)
 
 RESOLVE_BATCH = 50
+AUTH_PRIORITY = 10
+FETCH_PRIORITY = 1
 RESOLVE_CONCURRENCY = 4
 PLAYLISTS_DELAY_S = 30  # playlists are rewritten at most this often while downloads come in
 FINISH_RECHECK_S = 120
@@ -197,7 +199,7 @@ async def create(s: AsyncSession, user_id: int, *, source: str, method: str, tok
                          "verification_url": code.get("verification_url") or "https://ya.ru/device",
                          "interval": int(code.get("interval") or 5), "expires_at": expires.isoformat()}
         await enqueue(s, "import_auth", {"import_id": imp.id}, delay_s=imp.auth_json["interval"],
-                      priority=PRIORITY_IMPORT)
+                      priority=AUTH_PRIORITY)
         return imp
     if method == "token":
         if not (token or "").strip():
@@ -209,7 +211,7 @@ async def create(s: AsyncSession, user_id: int, *, source: str, method: str, tok
         raise SourceError("Неизвестный способ")
     s.add(imp)
     await s.flush()
-    await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=PRIORITY_IMPORT)
+    await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=FETCH_PRIORITY)
     return imp
 
 
@@ -238,7 +240,7 @@ async def handle_auth(job: Job) -> None:
         imp.token_enc = encrypt(token)
         imp.auth_json = {}
         imp.status = "fetching"
-        await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=PRIORITY_IMPORT)
+        await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=FETCH_PRIORITY)
     notify()
     publish(imp)
 

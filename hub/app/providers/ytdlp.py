@@ -32,7 +32,8 @@ import httpx
 import yt_dlp
 from yt_dlp.utils import DownloadCancelled, DownloadError, ExtractorError
 
-from app.config import YtdlpCfg
+from app.config import YtdlpCfg, get_settings
+from app.library.storage import require_space
 from app.net import PrioritySemaphore, make_client
 from app.providers.base import Candidate, ProviderError, StreamSource, TrackQuery
 
@@ -466,6 +467,13 @@ class YtdlpProvider:
 
     # ------------------------------------------------------------------ yt-dlp plumbing
 
+    def _proxy(self) -> str | None:
+        settings = get_settings()
+        hosts = {"soundcloud.com"} if self.name == "soundcloud" else {
+            "youtube.com", "www.youtube.com", "music.youtube.com", "googlevideo.com"
+        }
+        return settings.outbound_proxy if settings.outbound_proxy and settings.proxy_hosts & hosts else None
+
     def _base_opts(self) -> dict[str, Any]:
         opts: dict[str, Any] = {
             "quiet": True,
@@ -477,9 +485,11 @@ class YtdlpProvider:
             "retries": 3,
             "fragment_retries": 3,
         }
+        if proxy := self._proxy():
+            opts["proxy"] = proxy
         if self._youtube:
             opts.update({
-                "extractor_args": {"youtube": {"player_client": ["mweb"]}},
+                "extractor_args": {},
                 "retries": 1,
                 "fragment_retries": 1,
                 "extractor_retries": 1,
@@ -717,6 +727,7 @@ class YtdlpProvider:
 
     async def fetch(self, c: Candidate, dest_dir: Path, on_progress: ProgressCb | None = None) -> Path:
         dest_dir = Path(dest_dir)
+        await asyncio.to_thread(require_space, dest_dir, 64 * 2**20)
         await asyncio.to_thread(dest_dir.mkdir, parents=True, exist_ok=True)
         loop = asyncio.get_running_loop()
         cancelled = threading.Event()
@@ -732,6 +743,7 @@ class YtdlpProvider:
                 loop.call_soon_threadsafe(on_progress, fraction)
 
         def hook(d: dict) -> None:
+            require_space(dest_dir)
             if cancelled.is_set():
                 raise DownloadCancelled("cancelled")
             if d.get("status") == "downloading":
@@ -756,8 +768,11 @@ class YtdlpProvider:
 
         def download() -> Path:
             with self._youtube_dl(opts) as ydl:
-                info = ydl.extract_info(self.media_url(c), download=False, process=False)
-                info = ydl.process_ie_result(on_answering_servers(info), download=True)
+                if self._proxy():
+                    info = ydl.extract_info(self.media_url(c), download=True)
+                else:
+                    info = ydl.extract_info(self.media_url(c), download=False, process=False)
+                    info = ydl.process_ie_result(on_answering_servers(info), download=True)
             for rd in (info or {}).get("requested_downloads") or []:
                 if (fp := rd.get("filepath")) and Path(fp).is_file():
                     return Path(fp)
@@ -794,10 +809,12 @@ class YtdlpProvider:
                 raise ProviderError(f"YouTube: перед {c.provider_id} реклама на {wait:.0f} с")
             log.info("youtube %s: waiting %.1f s for the ad before it", c.provider_id, wait)
             await _sleep(wait)
-        url, original = await asyncio.to_thread(answering_url, url), url
-        _log_switch(original, url)
+        if not self._proxy():
+            url, original = await asyncio.to_thread(answering_url, url), url
+            _log_switch(original, url)
         if self._http is None:
-            self._http = make_client(timeout=60)
+            self._http = (httpx.AsyncClient(proxy=proxy, timeout=60, follow_redirects=True)
+                          if (proxy := self._proxy()) else make_client(timeout=60))
         headers = {k: v for k, v in (info.get("http_headers") or {}).items() if isinstance(v, str)}
         return StreamSource(url=url, client=self._http, headers=headers,
                             media_type=_MEDIA_TYPES.get(info.get("ext") or "", "audio/mp4"))

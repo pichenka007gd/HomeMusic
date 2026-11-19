@@ -26,11 +26,12 @@ from app.catalog.yandex import russian_original
 from app.config import get_settings
 from app.db import session_scope
 from app.events import bus
-from app.jobs.queue import PermanentError, enqueue, handler, notify, on_final_failure
+from app.jobs.queue import PermanentError, RetryLater, enqueue, handler, notify, on_final_failure
 from app.library import probe
 from app.library.importer import ImportSpec, cleanup_dir, import_file, staging_dir_for
 from app.library.navidrome import admin_client
 from app.library.owned import find_existing, quiet, star_only
+from app.library.storage import StorageFull, require_space
 from app.matching.select import (
     classify,
     match_catalog,
@@ -320,6 +321,11 @@ async def handle_download_item(job: Job) -> None:
     # 4. providers in order: search → rank → try the best files; the next provider is asked only if needed.
     # An explicit Russian track takes only copies known to be uncensored first (from the sources, then re-uploads
     # by small channels); a possibly censored copy is the last resort.
+    try:
+        await asyncio.to_thread(require_space, get_settings().staging_dir, 64 * 2**20)
+    except StorageFull as e:
+        await update_item(item_id, status="queued", error=str(e))
+        raise RetryLater(300, str(e)) from e
     stage = staging_dir_for("dl", item_id)
     errors: list[str] = []
     all_cands: list[Candidate] = []
@@ -585,6 +591,13 @@ async def handle_scan(job: Job) -> None:
         still = (
             await s.execute(select(func.count()).select_from(Track).where(Track.nd_song_id.is_(None)))
         ).scalar_one()
+        if linked and get_settings().embedder_url:
+            pending_embed = (await s.execute(select(Job.id).where(
+                Job.kind == "embed_library", Job.status == "queued").limit(1))).scalar_one_or_none()
+            if pending_embed is None:
+                await enqueue(s, "embed_library", {}, priority=-10)
+    if linked:
+        notify()
     if not still:
         return
     # Navidrome may need another pass (file just landed while the scan was running) — a few, not forever: each pass is
@@ -597,6 +610,17 @@ async def handle_scan(job: Job) -> None:
         notify()
     else:
         log.warning("navidrome scan: %s tracks still not found in Navidrome", still)
+
+
+@handler("embed_library")
+async def handle_embed_library(job: Job) -> None:
+    from app.mixes.embedder import EmbedderClient
+
+    async with session_scope() as s:
+        rows = (await s.execute(select(Track.nd_song_id, Track.path).where(Track.nd_song_id.is_not(None)))).all()
+    async with EmbedderClient() as client:
+        queued = await client.embed([{"key": f"nd:{song}", "path": path} for song, path in rows])
+    log.info("audio analysis: queued %s library tracks", queued)
 
 
 def _same_path(nd_path: str | None, rel: str) -> bool:

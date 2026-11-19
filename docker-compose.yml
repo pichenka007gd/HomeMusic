@@ -13,7 +13,7 @@ services:
   navidrome:
     image: deluan/navidrome:0.64.2
     container_name: homemusic_navidrome
-    restart: unless-stopped
+    restart: always
     ports:
       - "4533:4533"
     environment:
@@ -38,8 +38,17 @@ services:
     volumes:
       - navidrome-data:/data
       - ./navidrome/navidrome.toml:/config/navidrome.toml:ro
-      - ${MUSIC_ROOT:?set MUSIC_ROOT in .env}/library:/music:ro
-      - ${MUSIC_ROOT}/.backups/navidrome:/backups
+      - type: bind
+        source: ${MUSIC_ROOT:?set MUSIC_ROOT in .env}/library
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${MUSIC_ROOT}/.backups/navidrome
+        target: /backups
+        bind:
+          create_host_path: false
     logging: *logging
 
   hub:
@@ -48,7 +57,7 @@ services:
       dockerfile: hub/Dockerfile
     image: homemusic-hub:local
     container_name: homemusic_hub
-    restart: unless-stopped
+    restart: always
     depends_on:
       navidrome:
         condition: service_started
@@ -56,6 +65,8 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file: .env
     environment:
       MUSIC_ROOT: /music
@@ -66,7 +77,11 @@ services:
       YTDLP_CACHE_DIR: /data/yt-dlp-cache
     volumes:
       - hub-data:/data
-      - ${MUSIC_ROOT}:/music
+      - type: bind
+        source: ${MUSIC_ROOT}
+        target: /music
+        bind:
+          create_host_path: false
       - ./config.yaml:/config/config.yaml:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=5).status == 200 else 1)"]
@@ -81,7 +96,9 @@ services:
   youtube-pot:
     image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
     container_name: homemusic_youtube_pot
-    restart: unless-stopped
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     init: true
     expose:
       - "4416"
@@ -98,10 +115,14 @@ services:
   # Audio/text vectors (MuQ-MuLan) for mixes and «Моя волна» — MIXES.md, section 4.2. Only the compose network
   # reaches it (no published port): the Hub calls http://embedder:8090 (EMBEDDER_URL).
   embedder:
-    build: ./embedder
+    build:
+      context: ./embedder
+      dockerfile: Dockerfile.cpu
     image: homemusic-embedder:local
     container_name: homemusic_embedder
-    restart: unless-stopped
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8090"
     environment:
@@ -111,23 +132,27 @@ services:
       HF_HOME: /models/hf
       MUSIC_ROOT: /music
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      EMBEDDER_DEVICE: cpu
+      EMBEDDER_CPU_THREADS: "18"
+      EMBEDDER_BATCH: "2"
+      EMBEDDER_CLIP_BATCH: "1"
+      HTTPS_PROXY: http://host.docker.internal:11089
+      HTTP_PROXY: http://host.docker.internal:11089
+      NO_PROXY: localhost,127.0.0.1,hub,navidrome,embedder
     volumes:
       - embedder-data:/data
       # weights (~3 GB) are downloaded on the first job and kept here, not in the image
       - embedder-models:/models
-      - ${MUSIC_ROOT}/library:/music:ro
-    # loading the model onto the GPU peaks at ~3.4 GB (with the checkpoint's page cache), working ~2.5 GB; a runaway
-    # is killed here, not the whole WSL VM and Docker Desktop with it (Windows' page file is small). No swap.
-    # EMBEDDER_DEVICE=cpu needs ~7 GB: raise both limits first.
-    mem_limit: 4g
-    memswap_limit: 4g
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - type: bind
+        source: ${MUSIC_ROOT}/library
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+    # CPU-only until the host NVIDIA driver works; leave 10 logical CPUs for playback and other applications.
+    mem_limit: 10g
+    memswap_limit: 10g
+    cpus: 18
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=5).status == 200 else 1)"]
       interval: 30s

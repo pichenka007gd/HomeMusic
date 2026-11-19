@@ -405,6 +405,9 @@ async def download_audio(
     label: str = "provider",
 ) -> Path:
     """Stream `url` (following redirects) to `dest` via `dest.part`; verify audio content type and size."""
+    from app.library.storage import require_space
+
+    await asyncio.to_thread(require_space, dest, 64 * 2**20)
     part = dest.with_name(dest.name + ".part")
     resp: httpx.Response | None = None
     try:
@@ -434,6 +437,7 @@ async def download_audio(
         total = int(resp.headers.get("content-length") or 0) or None
         if total is not None and total < MIN_AUDIO_BYTES:
             raise ProviderError(f"{label}: файл слишком мал ({total} байт)")
+        await asyncio.to_thread(require_space, dest, total or 0)
         dest.parent.mkdir(parents=True, exist_ok=True)
         size = 0
         buf = bytearray()
@@ -443,6 +447,7 @@ async def download_audio(
                 buf += chunk
                 size += len(chunk)
                 if len(buf) >= 1024 * 1024:
+                    await asyncio.to_thread(require_space, dest, len(buf))
                     await asyncio.to_thread(f.write, bytes(buf))
                     buf.clear()
                 if on_progress and total:

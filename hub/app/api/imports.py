@@ -11,7 +11,7 @@ from app.auth import current_user
 from app.db import get_session
 from app.imports import apply, core
 from app.imports.sources.base import SourceError
-from app.jobs.queue import PRIORITY_IMPORT, PermanentError, enqueue, notify
+from app.jobs.queue import PermanentError, enqueue, notify
 from app.models import DownloadItem, Import, ImportCollection, ImportItem, Track, User
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
@@ -122,7 +122,7 @@ async def sync(import_id: int, user: User = Depends(current_user),
     if imp.method != "profile" and not imp.token_enc:
         raise HTTPException(409, "Вход в сервис удалён — начните новый перенос")
     imp.status = "fetching"
-    await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=PRIORITY_IMPORT)
+    await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=core.FETCH_PRIORITY)
     await s.flush()
     out = await core.import_out(s, imp)
     await s.commit()

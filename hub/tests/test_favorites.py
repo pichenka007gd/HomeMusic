@@ -106,6 +106,91 @@ async def ledger(db_file):
     await dispose()
 
 
+async def test_unchanged_reconciliation_does_not_rewrite_subjects(ledger, monkeypatch):
+    from app import favorites
+    from app.db import session_scope
+    user, _ = ledger
+    body = {"song": [{"id": "s", "title": "Song", "artist": "Artist", "duration": 123}]}
+    async with session_scope() as s:
+        await reconcile(s, user, body, now=NOW)
+    spy = AsyncMock(wraps=favorites.remember)
+    monkeypatch.setattr(favorites, "remember", spy)
+    async with session_scope() as s:
+        assert await reconcile(s, user, body, now=NOW + timedelta(days=2)) == 0
+    spy.assert_not_awaited()
+    async with session_scope() as s:
+        body["song"][0]["title"] = "Updated"
+        await reconcile(s, user, body, now=NOW + timedelta(days=2))
+        assert (await s.execute(select(FavoriteSubject))).scalar_one().data["title"] == "Updated"
+    spy.assert_awaited_once()
+
+
+async def test_invalid_snapshot_does_not_deliver_pending_mirrors(ledger):
+    from app.db import session_scope
+    user, _ = ledger
+    async with session_scope() as s:
+        await record(s, user.id, FavoriteTarget(nd_song_id="pending"), True, mirror_pending=True)
+    nd = AsyncMock()
+    async with session_scope() as s:
+        with pytest.raises(ValueError, match="incomplete starred2 object"):
+            await reconcile(s, user, {"song": [{"title": "Missing id"}]}, nd=nd)
+    nd.star.assert_not_awaited()
+
+
+@pytest.mark.parametrize("phase", ["enrich", "recover", "mirror"])
+async def test_favorites_sync_releases_writer_during_network(ledger, monkeypatch, phase):
+    from sqlalchemy import text
+
+    from app.db import session_scope
+    from app.favorites import remember, sync_user
+    from app.models import ImportCollection, ImportItem
+
+    user, _ = ledger
+    async with session_scope() as s:
+        if phase == "enrich":
+            for name in ("One", "Two"):
+                await remember(s, FavoriteTarget(target_type="artist", ref=f"dz:{name}", target_data={"name": name}))
+        elif phase == "recover":
+            imp = Import(user_id=user.id, source="yandex", method="token")
+            s.add(imp)
+            await s.flush()
+            coll = ImportCollection(import_id=imp.id, kind="artists", external_id="artists", title="Artists")
+            s.add(coll)
+            await s.flush()
+            for name in ("One", "Two"):
+                s.add(ImportItem(import_id=imp.id, collection_id=coll.id, external_id=name,
+                                 ref=f"dz:{name}", raw_json={"name": name}, status="done"))
+        else:
+            await record(s, user.id, FavoriteTarget(nd_song_id="pending"), True, mirror_pending=True)
+
+    async def independent_writer():
+        async with session_scope() as other:
+            await other.execute(text("PRAGMA busy_timeout=100"))
+            await other.execute(text("UPDATE users SET last_seen_at=last_seen_at WHERE id=:id"), {"id": user.id})
+
+    async def search(name, **kwargs):
+        await independent_writer()
+        return {"artist": [{"id": f"nd-{name}", "name": name}]}
+
+    nd = AsyncMock()
+    nd.get_starred2.return_value = {"song": [{"id": "outside"}]} if phase == "mirror" else {}
+    nd.search3.side_effect = search
+
+    async def star(**kwargs):
+        await independent_writer()
+
+    nd.star.side_effect = star
+    monkeypatch.setattr("app.auth.user_navidrome", lambda _: nd)
+    await sync_user(user)
+    if phase == "mirror":
+        nd.star.assert_awaited_once_with(song_ids=["pending"])
+    else:
+        assert nd.search3.await_count == 2
+        async with session_scope() as s:
+            rows = list((await s.execute(select(FavoriteSubject).where(FavoriteSubject.target_type == "artist"))).scalars())
+            assert {row.nd_id for row in rows} == {"nd-One", "nd-Two"}
+
+
 async def test_reconcile_bootstrap_import_provenance_restart_empty_and_grace(ledger):
     from app.db import session_scope
     user, other = ledger
