@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hmac
-from ipaddress import ip_address
+from functools import lru_cache
+from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 from time import time
 from urllib.parse import quote
 
@@ -37,16 +38,31 @@ class GuestTrack(BaseModel):
     artist: str
 
 
+@lru_cache(maxsize=4)
+def _edge_networks(cidrs: str) -> tuple[IPv4Network | IPv6Network, ...]:
+    return tuple(ip_network(cidr.strip()) for cidr in cidrs.split(",")) if cidrs else ()
+
+
+def _guest_address(request: Request, cidrs: str) -> IPv4Address | IPv6Address:
+    try:
+        address = ip_address(request.client.host if request.client else "")
+        if request.url.scheme == "https" and any(address in network for network in _edge_networks(cidrs)):
+            connecting_ip = request.headers.getlist("cf-connecting-ip")
+            if len(connecting_ip) != 1:
+                raise ValueError("Missing or ambiguous Cloudflare visitor address")
+            address = ip_address(connecting_ip[0])
+    except ValueError as exc:
+        raise HTTPException(400, "Не удалось определить IP") from exc
+    return (address.ipv4_mapped or address) if isinstance(address, IPv6Address) else address
+
+
 async def _allow(request: Request, action: str) -> None:
     settings = get_settings()
     if not settings.public_guest_enabled:
         raise HTTPException(404, "Гостевой режим отключён")
     if not settings.hub_secret_key:
         raise HTTPException(503, "Гостевой режим не настроен")
-    try:
-        address = ip_address(request.client.host if request.client else "")
-    except ValueError as exc:
-        raise HTTPException(400, "Не удалось определить IP") from exc
+    address = _guest_address(request, settings.guest_cloudflare_edge_cidrs)
     identity = hmac.digest(settings.hub_secret_key.encode(), b"guest:" + address.packed, "sha256").hex()
     minute = int(time()) // 60
     async with session_scope() as s:

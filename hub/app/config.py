@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
+from ipaddress import ip_network
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -170,6 +171,7 @@ class Settings(BaseSettings):
     public_music_url: str = ""
     public_hub_url: str = ""
     public_guest_enabled: bool = False
+    guest_cloudflare_edge_cidrs: str = ""
 
     hub_secret_key: str = ""
     session_days: int = 60
@@ -257,6 +259,14 @@ class Settings(BaseSettings):
     @property
     def proxy_hosts(self) -> set[str]:
         return {h.strip().lower() for h in self.outbound_proxy_hosts.split(",") if h.strip()}
+
+    @field_validator("guest_cloudflare_edge_cidrs")
+    @classmethod
+    def validate_guest_cloudflare_edge_cidrs(cls, value: str) -> str:
+        for cidr in value.split(",") if value else ():
+            if ip_network(cidr.strip()).prefixlen == 0:
+                raise ValueError("Guest Cloudflare edge must not trust every address")
+        return value
 
 
 def load_app_config(path: Path) -> AppConfig:
