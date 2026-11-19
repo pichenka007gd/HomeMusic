@@ -1,0 +1,248 @@
+package com.eddyizm.tempus.ui.fragment;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.media3.common.util.UnstableApi;
+import androidx.recyclerview.widget.LinearLayoutManager;
+
+import com.eddyizm.tempus.App;
+import com.eddyizm.tempus.R;
+import com.eddyizm.tempus.ui.login.LoginActivity;
+import com.eddyizm.tempus.ui.adapter.ServerAdapter;
+import com.eddyizm.tempus.databinding.FragmentLoginBinding;
+import com.eddyizm.tempus.homemusic.HomeLogin;
+import com.eddyizm.tempus.homemusic.HubConfig;
+import com.eddyizm.tempus.interfaces.ClickCallback;
+import com.eddyizm.tempus.interfaces.SystemCallback;
+import com.eddyizm.tempus.model.Server;
+import com.eddyizm.tempus.repository.PlaylistRepository;
+import com.eddyizm.tempus.repository.SystemRepository;
+import com.eddyizm.tempus.ui.activity.MainActivity;
+import com.eddyizm.tempus.ui.dialog.ServerSignupDialog;
+import com.eddyizm.tempus.util.Preferences;
+import com.eddyizm.tempus.viewmodel.LoginViewModel;
+
+@UnstableApi
+public class LoginFragment extends Fragment implements ClickCallback {
+    private static final String TAG = "LoginFragment";
+
+    private FragmentLoginBinding bind;
+    private MainActivity activity;
+    private LoginViewModel loginViewModel;
+
+    private ServerAdapter serverAdapter;
+    private Runnable localNetworkGranted;
+    private Runnable localNetworkDenied;
+    private final ActivityResultLauncher<String> localNetworkPermission = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(), granted -> {
+                Runnable callback = granted ? localNetworkGranted : localNetworkDenied;
+                localNetworkGranted = null;
+                localNetworkDenied = null;
+                if (callback != null && getView() != null) callback.run();
+            });
+
+    /** The server is chosen before Android 17's LAN permission prompt or any connection. */
+    public void withLocalNetworkPermission(Runnable granted, Runnable denied) {
+        String permission = "android.permission.ACCESS_LOCAL_NETWORK";
+        if (Build.VERSION.SDK_INT < 37 || ContextCompat.checkSelfPermission(requireContext(), permission) == PackageManager.PERMISSION_GRANTED) {
+            granted.run();
+            return;
+        }
+        localNetworkGranted = granted;
+        localNetworkDenied = denied;
+        localNetworkPermission.launch(permission);
+    }
+
+    @Override
+    public void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true);
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        if (HubConfig.isEnabled()) return;
+        inflater.inflate(R.menu.login_page_menu, menu);
+    }
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        activity = (MainActivity) getActivity();
+
+        // HomeMusic: its own sign-in (server → account / invite code / Google) instead of the server list
+        View homeLogin = HomeLogin.createView(this, inflater, container);
+        if (homeLogin != null) return homeLogin;
+
+        loginViewModel = new ViewModelProvider(requireActivity()).get(LoginViewModel.class);
+        bind = FragmentLoginBinding.inflate(inflater, container, false);
+        View view = bind.getRoot();
+
+        initAppBar();
+        initServerListView();
+        initNewLoginButton();
+
+        return view;
+    }
+
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        localNetworkGranted = null;
+        localNetworkDenied = null;
+        bind = null;
+    }
+
+    private void initAppBar() {
+        activity.setSupportActionBar(bind.toolbar);
+
+        bind.appBarLayout.addOnOffsetChangedListener((appBarLayout, verticalOffset) -> {
+            if (bind == null) return;
+
+            if ((bind.serverInfoSector.getHeight() + verticalOffset) < (2 * ViewCompat.getMinimumHeight(bind.toolbar))) {
+                bind.toolbar.setTitle(R.string.login_title);
+            } else {
+                bind.toolbar.setTitle(R.string.empty_string);
+            }
+        });
+    }
+
+    private void initServerListView() {
+        bind.serverListRecyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
+        bind.serverListRecyclerView.setHasFixedSize(true);
+
+        serverAdapter = new ServerAdapter(this);
+        bind.serverListRecyclerView.setAdapter(serverAdapter);
+        loginViewModel.getServerList().observe(getViewLifecycleOwner(), servers -> {
+            if (!servers.isEmpty()) {
+                if (bind != null) bind.noServerAddedTextView.setVisibility(View.GONE);
+                if (bind != null) bind.serverListRecyclerView.setVisibility(View.VISIBLE);
+                serverAdapter.setItems(servers);
+            } else {
+                if (bind != null) bind.noServerAddedTextView.setVisibility(View.VISIBLE);
+                if (bind != null) bind.serverListRecyclerView.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    public void initNewLoginButton() {
+
+        /* Edge-to-edge fixup */
+        ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) bind.newLoginButton.getLayoutParams();
+        final int baseBottomMargin = params.bottomMargin;
+        ViewCompat.setOnApplyWindowInsetsListener(bind.newLoginButton, (v, windowInsets) -> {
+            Insets systemInsets = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            params.bottomMargin = baseBottomMargin + systemInsets.bottom;
+            v.setLayoutParams(params);
+            return windowInsets;
+        });
+
+        /* Setup button */
+        bind.newLoginButton.setOnClickListener(v -> {
+            Intent tempus = new Intent(requireActivity(), LoginActivity.class);
+            tempus.putExtra("HIDE_TAB_LAYOUT", true);
+            tempus.putExtra("HIDE_TOPAPPBAR_LAYOUT", false);
+            tempus.putExtra("SELECT_FRAGMENT", 3);
+            startActivity(tempus);
+        });
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_add) {
+            ServerSignupDialog dialog = new ServerSignupDialog();
+            dialog.show(activity.getSupportFragmentManager(), null);
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public void onServerClick(Bundle bundle) {
+        Server server = bundle.getParcelable("server_object");
+        saveServerPreference(server.getServerId(), server.getAddress(), server.getLocalAddress(), server.getUsername(), server.getPassword(), server.isLowSecurity(), server.getClientCert());
+
+        SystemRepository systemRepository = new SystemRepository();
+        systemRepository.checkUserCredential(new SystemCallback() {
+            @Override
+            public void onError(Exception exception) {
+                Preferences.switchInUseServerAddress();
+                resetServerPreference();
+
+                Context context = getContext();
+                if (context != null && isAdded()) {
+                    Toast.makeText(context, exception.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onSuccess(String password, String token, String salt) {
+                new PlaylistRepository().refreshAllPlaylists();
+                activity.goFromLogin();
+            }
+        });
+    }
+
+    @Override
+    public void onServerLongClick(Bundle bundle) {
+        ServerSignupDialog dialog = new ServerSignupDialog();
+        dialog.setArguments(bundle);
+        dialog.show(activity.getSupportFragmentManager(), null);
+    }
+
+    private void saveServerPreference(String serverId, String server, String localAddress, String user, String password, boolean isLowSecurity, String clientCert) {
+        // Written only when the stored address belongs to another server. Tapping the same one
+        // again has to keep the flip onError made, which is how a second attempt reaches the local
+        // address. The server id cannot be the test, because onError clears it.
+        String inUseAddress = Preferences.getInUseServerAddress();
+        boolean addressIsThisServers = java.util.Objects.equals(inUseAddress, server)
+                || java.util.Objects.equals(inUseAddress, localAddress);
+
+        Preferences.setServerId(serverId);
+        Preferences.setServer(server);
+        Preferences.setLocalAddress(localAddress);
+        if (!addressIsThisServers) Preferences.setInUseServerAddress(server);
+        Preferences.setUser(user);
+        Preferences.setPassword(password);
+        Preferences.setLowSecurity(isLowSecurity);
+        Preferences.setClientCert(clientCert);
+
+        App.getSubsonicClientInstance(true);
+    }
+
+    private void resetServerPreference() {
+        Preferences.setServerId(null);
+        Preferences.setServer(null);
+        Preferences.setUser(null);
+        Preferences.setPassword(null);
+        Preferences.setToken(null);
+        Preferences.setSalt(null);
+        Preferences.setLowSecurity(false);
+        Preferences.setClientCert(null);
+
+        App.getSubsonicClientInstance(true);
+    }
+}

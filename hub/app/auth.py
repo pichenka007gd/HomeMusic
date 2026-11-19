@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from time import monotonic
 
 from fastapi import Depends, HTTPException, Request, Response
-from sqlalchemy import delete, select
+from sqlalchemy import delete
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -16,6 +18,38 @@ from app.security import decrypt, encrypt, hash_token, new_token
 
 COOKIE = "hm_session"
 SEEN_EVERY = timedelta(minutes=5)  # how often a request refreshes User.last_seen_at (admin's user list)
+
+
+# Navidrome also counts Subsonic failures from the Hub against signed-in library requests.
+# Reserve fewer attempts than Navidrome's default budget (5 in 20 seconds).
+_PASSWORD_WINDOW_S = 30
+_PASSWORD_USER_LIMIT = 3
+_PASSWORD_TOTAL_LIMIT = 120
+_password_attempts: dict[object, tuple[str, float | None]] = {}
+
+
+async def password_login(s: AsyncSession, username: str, password: str) -> tuple[User, str]:
+    now = monotonic()
+    name = username.lower()
+    for key, (_, until) in list(_password_attempts.items()):
+        if until is not None and until <= now:
+            del _password_attempts[key]
+    if (len(_password_attempts) >= _PASSWORD_TOTAL_LIMIT
+            or sum(account == name for account, _ in _password_attempts.values()) >= _PASSWORD_USER_LIMIT):
+        raise HTTPException(429, "Слишком много попыток входа. Попробуйте через 30 секунд.",
+                            headers={"Retry-After": str(_PASSWORD_WINDOW_S)})
+
+    attempt = object()
+    _password_attempts[attempt] = name, None
+    try:
+        return await login(s, username, password)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            _password_attempts[attempt] = name, monotonic() + _PASSWORD_WINDOW_S
+        raise
+    finally:
+        if _password_attempts[attempt][1] is None:
+            del _password_attempts[attempt]
 
 
 async def login(s: AsyncSession, username: str, password: str) -> tuple[User, str]:
@@ -29,15 +63,15 @@ async def login(s: AsyncSession, username: str, password: str) -> tuple[User, st
     finally:
         await nd.aclose()
 
-    user = (await s.execute(select(User).where(User.nd_username == username))).scalar_one_or_none()
-    if user is None:
-        user = User(nd_username=username, nd_password_enc=encrypt(password))
-        s.add(user)
-    else:
-        user.nd_password_enc = encrypt(password)
-    user.is_admin = bool(info.get("adminRole"))
-    user.last_seen_at = utcnow()
-    await s.flush()
+    # Preserve the spelling returned for the authenticated user, including when signing in by email.
+    canonical_name = info.get("username")
+    upsert = insert(User).values(nd_username=canonical_name or username, nd_password_enc=encrypt(password),
+                                is_admin=bool(info.get("adminRole")), last_seen_at=utcnow())
+    user = (await s.scalars(upsert.on_conflict_do_update(
+        index_elements=[User.nd_username.collate("NOCASE")],
+        set_={"nd_username": canonical_name or User.nd_username, "nd_password_enc": upsert.excluded.nd_password_enc,
+              "is_admin": upsert.excluded.is_admin, "last_seen_at": upsert.excluded.last_seen_at},
+    ).returning(User), execution_options={"populate_existing": True})).one()
 
     token, token_hash = new_token()
     s.add(Session(id=token_hash, user_id=user.id, expires_at=utcnow() + timedelta(days=get_settings().session_days)))

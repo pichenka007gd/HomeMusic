@@ -52,6 +52,8 @@ async def env(hub_env):
         body: dict = {}
         if name == "getUser":
             body = {"user": {"adminRole": True}}
+        elif name == "getScanStatus":
+            body = {"scanStatus": {"count": 4123}}
         elif name == "getArtists":
             body = {"artists": {"index": [{"name": "К", "artist": ARTISTS}]}}
         elif name == "getAlbumList2":
@@ -198,10 +200,56 @@ async def test_home_rows_and_radio_with_liked_artists_first(env):
     r = await env["client"].get("/api/nd/home")
     assert r.status_code == 200, r.text
     d = r.json()
+    assert d["track_count"] == 4123
     assert [a["id"] for a in d["recent"]] == ["alK", "alK2"] and [a["id"] for a in d["starred"]] == ["alK"]
     assert [(a["name"], a["starred"]) for a in d["radio"]] == [("Кино", True), ("Кто-то", False)]
     types = sorted(p["type"] for name, p in env["state"]["calls"] if name == "getAlbumList2")
     assert types == ["frequent", "newest", "recent", "starred"]
+
+
+async def test_guest_access_is_limited_to_public_media(env, monkeypatch):
+    from sqlalchemy import select
+
+    from app import listen
+    from app.api import guest
+    from app.config import get_settings
+    from app.db import session_scope
+    from app.models import GuestUsage
+    from app.services import svc
+    from tests.support import FakeDeezer
+
+    c = env["client"]
+    c.cookies.clear()
+    assert (await c.get("/api/guest/home")).status_code == 404
+    get_settings().public_guest_enabled = True
+    monkeypatch.setattr(svc, "deezer", FakeDeezer())
+    monkeypatch.setitem(guest.LIMITS, "search", (1, 10))
+    monkeypatch.setattr(guest, "time", lambda: 60_000)
+    assert (await c.get("/api/guest/home")).json() == {"track_count": 4123}
+    assert (await c.get("/api/auth/me")).status_code == 401
+    assert (await c.post("/api/downloads", json={"track_refs": ["dz:100"]})).status_code == 401
+    assert (await c.get("/api/imports")).status_code == 401
+    tracks = (await c.get("/api/guest/search", params={"q": "Кино"})).json()
+    assert tracks[0] == {"ref": "nd:ndK", "artist": "Кино", "title": "Группа крови"}
+    assert any(track["ref"] == "dz:100" for track in tracks)
+    limited = await c.get("/api/guest/search", params={"q": "Кино"}, headers={"X-Forwarded-For": "192.0.2.1"})
+    assert limited.status_code == 429 and limited.headers["Retry-After"] == "60"
+    async with session_scope() as s:
+        profiles = set(await s.scalars(select(GuestUsage.profile).where(GuestUsage.profile != "global")))
+        assert len(profiles) == 1 and len(profiles.pop()) == 64
+
+    path = get_settings().library_dir / "track.mp3"
+    path.write_bytes(b"music")
+
+    async def open_media(ref, rng, *, full_only):
+        assert ref == "nd:ndK" and full_only == (rng is None)
+        return listen.Media(listen.Choice(ref, "library", "Кино", "Группа крови"), path=path)
+
+    monkeypatch.setattr(listen, "open_media", open_media)
+    play = await c.get("/api/guest/audio", params={"ref": "nd:ndK"}, headers={"Range": "bytes=1-2"})
+    assert play.status_code == 206 and play.content == b"us"
+    downloaded = await c.get("/api/guest/audio", params={"ref": "nd:ndK", "download": True})
+    assert downloaded.content == b"music" and downloaded.headers["Content-Disposition"].startswith("attachment;")
 
 
 async def test_artists_artist_page_and_album_lists(env):

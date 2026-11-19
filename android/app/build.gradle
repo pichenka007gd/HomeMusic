@@ -1,0 +1,306 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.kotlin.compose)
+}
+
+// Build inputs can override the public HomeMusic deployment without changing saved servers.
+def homemusicProperties = new Properties()
+def homemusicPropertiesFile = rootProject.file('homemusic.properties')
+if (homemusicPropertiesFile.exists()) {
+    homemusicPropertiesFile.withInputStream { homemusicProperties.load(it) }
+}
+def homemusicUrl = { String gradleProperty, String localProperty, String fallback ->
+    def value = providers.gradleProperty(gradleProperty)
+            .getOrElse(homemusicProperties.getProperty(localProperty, fallback)).trim()
+    groovy.json.JsonOutput.toJson(value)
+}
+
+// HomeMusic release signing: credentials live in the git-ignored keystore.properties
+// (storeFile, storePassword, keyAlias, keyPassword). Without it the release APK is left unsigned.
+def homemusicKeystoreProperties = new Properties()
+def homemusicKeystoreFile = rootProject.file('keystore.properties')
+if (homemusicKeystoreFile.exists()) {
+    homemusicKeystoreFile.withInputStream { homemusicKeystoreProperties.load(it) }
+}
+
+android {
+    namespace = 'com.eddyizm.tempus'
+    //noinspection GradleDependency
+    compileSdk = 37
+    buildToolsVersion = '36.1.0'
+
+    defaultConfig {
+        minSdkVersion 24
+        //noinspection OldTargetApi
+        targetSdk = 37
+
+        versionCode 50
+        versionName '4.29.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+
+        // HomeMusic integration (Hub tabs, share target, notifications, updates) is off by default.
+        buildConfigField 'boolean', 'HOMEMUSIC', 'false'
+        buildConfigField 'String', 'HUB_URL', '""'
+        buildConfigField 'String', 'HUB_LOCAL_URL', '""'
+        buildConfigField 'String', 'MUSIC_URL', '""'
+        buildConfigField 'String', 'MUSIC_LOCAL_URL', '""'
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments += [
+                        "room.incremental"   : "true"
+                ]
+                // The schema directory goes in as a relocatable input (see RoomSchemaArgs at the end of the file): an absolute
+                // path in the plain argument made the javac cache key differ per checkout and defeated the Gradle build cache.
+                compilerArgumentProviders(new RoomSchemaArgs(project.file("schemas")))
+            }
+        }
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
+    splits {
+        abi {
+            enable = true
+            reset()
+            //noinspection ChromeOsAbiSupport
+            universalApk = true
+        }
+    }
+
+    packaging {
+        // DEX stored uncompressed: the release patches (scripts/release-android.ps1) diff raw bytecode, so an update that
+        // changes a little ships about 1.2-1.8 MB instead of 3.7 MB (the full APK is 3.6 MB larger).
+        dex {
+            useLegacyPackaging = false
+        }
+    }
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
+    }
+
+    signingConfigs {
+        if (homemusicKeystoreFile.exists()) {
+            homemusic {
+                storeFile = rootProject.file(homemusicKeystoreProperties['storeFile'])
+                storePassword = homemusicKeystoreProperties['storePassword']
+                keyAlias = homemusicKeystoreProperties['keyAlias']
+                keyPassword = homemusicKeystoreProperties['keyPassword']
+            }
+        }
+    }
+
+    flavorDimensions += "default"
+
+    productFlavors {
+        tempus {
+            dimension = "default"
+            applicationId = 'com.eddyizm.tempus'
+        }
+
+        degoogled {
+            dimension = "default"
+            applicationId = "com.eddyizm.degoogled.tempus"
+        }
+
+        // HomeMusic fork: degoogled base (no Google services) + Hub integration.
+        homemusic {
+            dimension = "default"
+            applicationId = "app.homemusic.selfhost"
+            // Own version line; -PhmVersionCode / -PhmVersionName override it for test builds.
+            versionCode Integer.parseInt((project.findProperty('hmVersionCode') ?: '1').toString())
+            versionName((project.findProperty('hmVersionName') ?: '1.0.0').toString())
+            buildConfigField 'boolean', 'HOMEMUSIC', 'true'
+            buildConfigField 'String', 'HUB_URL', homemusicUrl('hmHubUrl', 'hubUrl', 'https://music.pichenka007gd.ru')
+            buildConfigField 'String', 'HUB_LOCAL_URL', homemusicUrl('hmHubLocalUrl', 'hubLocalUrl', '')
+            // The music server (Navidrome) the sign-in screen offers, and its home address
+            buildConfigField 'String', 'MUSIC_URL', homemusicUrl('hmMusicUrl', 'musicUrl', 'https://hub.pichenka007gd.ru')
+            buildConfigField 'String', 'MUSIC_LOCAL_URL', homemusicUrl('hmMusicLocalUrl', 'musicLocalUrl', '')
+            if (homemusicKeystoreFile.exists()) {
+                signingConfig = signingConfigs.homemusic
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            shrinkResources = true
+            minifyEnabled = true
+            debuggable = false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+
+        debug {
+            applicationIdSuffix = ".debug"
+            debuggable = true
+        }
+    }
+
+    buildFeatures {
+        viewBinding = true
+        buildConfig = true
+        compose = true
+    }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+        disable += "MissingTranslation"
+    }
+}
+
+dependencies {
+    implementation("io.sigpipe:jbsdiff:1.0")
+    implementation("org.apache.commons:commons-compress:1.20")
+    implementation files('../libs/lib-decoder-ffmpeg-release.aar')
+
+    // AndroidX
+    implementation libs.androidx.activity
+    implementation libs.androidx.activity.ktx
+    implementation libs.androidx.annotation
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.coordinatorlayout
+    implementation libs.androidx.lifecycle.livedata.ktx
+    implementation libs.androidx.lifecycle.viewmodel.ktx
+    implementation libs.androidx.preference.ktx
+    implementation libs.androidx.navigation.fragment.ktx
+    implementation libs.androidx.navigation.ui.ktx
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.room.runtime
+    implementation libs.androidx.splashscreen
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.swiperefreshlayout
+
+    // Compose
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.compose.runtime
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.graphics
+    implementation libs.androidx.compose.ui.tooling.preview
+    implementation libs.androidx.compose.foundation
+    debugImplementation libs.androidx.compose.ui.tooling
+
+    // Android Material
+    implementation libs.material
+
+    // Glide
+    implementation libs.glide
+    implementation libs.glide.annotations
+    annotationProcessor libs.glide.compiler
+
+    // Media3
+    implementation libs.media3.session
+    implementation libs.media3.common
+    implementation libs.media3.exoplayer
+    implementation libs.media3.ui
+    implementation libs.media3.exoplayer.hls
+    tempusImplementation libs.media3.cast
+
+    // HomeMusic: background Hub polling (notifications) and the Hub WebView tabs
+    implementation libs.androidx.work.runtime
+    implementation libs.androidx.webkit
+    // HomeMusic: sign-in with Google (Credential Manager; works where Google Play services are)
+    homemusicImplementation libs.androidx.credentials
+    homemusicImplementation libs.androidx.credentials.play.services.auth
+    homemusicImplementation libs.googleid
+
+    // Route picker. Pulled in transitively by the Cast SDK for the tempus flavor
+    // already; declared here at the same version so the degoogled flavor has it too.
+    implementation libs.mediarouter
+
+    // Room Compiler
+    annotationProcessor libs.androidx.room.compiler
+
+    // Retrofit
+    implementation libs.retrofit
+    implementation libs.retrofit.converter.gson
+    implementation libs.okhttp.logging
+
+    // Misc
+    implementation libs.sdp.android
+    implementation libs.customactivityoncrash
+    implementation(libs.shimmer) {
+        artifact {
+            name = 'shimmer'
+            type = 'aar'
+        }
+    }
+    implementation libs.kotlin.metadata
+    implementation(libs.colorpickerview)
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.12.0'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:5.4.0'
+    testImplementation 'androidx.arch.core:core-testing:2.2.0'
+
+    androidTestImplementation libs.androidx.test.ext.junit
+    androidTestImplementation libs.androidx.test.runner
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations { homeMusicDeltaTool }
+dependencies {
+    homeMusicDeltaTool("io.sigpipe:jbsdiff:1.0")
+    homeMusicDeltaTool("org.apache.commons:commons-compress:1.20")
+}
+tasks.register("writeHomeMusicDeltaClasspath") {
+    doLast {
+        file(project.property("hmDeltaClasspathFile")).text = configurations.homeMusicDeltaTool.asPath
+    }
+}
+
+// Records that the WHOLE unit-test suite passed on a clean checkout of the current commit. scripts/release-android.ps1 reads the
+// record and does not repeat the tests for that exact commit; anything else (dirty tree, other commit, --tests filter, failure) leaves
+// no record, so the script runs them itself. The record goes to the git directory shared by all worktrees, so a run in a task
+// worktree still counts after the branch is fast-forwarded into homemusic.
+tasks.register("recordHomeMusicTestsPassed") {
+    doLast {
+        def test = tasks.getByName("testHomemusicDebugUnitTest")
+        def state = test.state
+        def ranOrUnchanged = state.failure == null &&
+                ((state.executed && !state.skipped) || state.skipMessage in ["UP-TO-DATE", "FROM-CACHE"])
+        def unfiltered = test.filter.includePatterns.isEmpty() && test.filter.commandLineIncludePatterns.isEmpty()
+        if (!ranOrUnchanged || !unfiltered) return
+        def git = { String... args ->
+            def process = new ProcessBuilder(["git", "-C", rootProject.projectDir.absolutePath] + args.toList()).redirectErrorStream(true).start()
+            def output = process.inputStream.text.trim()
+            if (process.waitFor() != 0) throw new GradleException("git ${args.join(' ')} failed: $output")
+            output
+        }
+        if (!git("status", "--porcelain", "--untracked-files=normal").isEmpty()) return
+        def head = git("rev-parse", "HEAD")
+        def common = new File(git("rev-parse", "--git-common-dir"))
+        if (!common.absolute) common = new File(rootProject.projectDir, common.path)
+        def dir = new File(common, "homemusic-tests-passed")
+        dir.mkdirs()
+        new File(dir, head).text = "passed ${new Date().format('yyyy-MM-dd HH:mm:ss')}\n"
+    }
+}
+tasks.configureEach { task ->
+    if (task.name == "testHomemusicDebugUnitTest") task.finalizedBy("recordHomeMusicTestsPassed")
+}
+
+// Passes Room's -Aroom.schemaLocation so that the build cache key depends on the schema files and their relative paths,
+// not on where the project is checked out. Without it a release built in a task worktree could not be reused from the main
+// checkout: javac missed the cache, and R8, lint and packaging missed after it.
+class RoomSchemaArgs implements CommandLineArgumentProvider {
+    @InputDirectory
+    @PathSensitive(PathSensitivity.RELATIVE)
+    final File dir
+
+    RoomSchemaArgs(File dir) { this.dir = dir }
+
+    @Override
+    Iterable<String> asArguments() { ["-Aroom.schemaLocation=${dir.path}".toString()] }
+}

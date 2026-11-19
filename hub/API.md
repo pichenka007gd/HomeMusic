@@ -5,9 +5,13 @@ Auth: cookie `hm_session` (HttpOnly, set by login). Any endpoint except login/he
 Errors: `{"detail": "<Russian message>"}` with 4xx/5xx.
 
 ## Auth
+
+Username matching for sign-in and registration ignores ASCII letter case, as in Navidrome.
+`MeOut.username` uses Navidrome's spelling, including for email sign-in. The password is case-sensitive.
+
 | Method | Path | Body → Response |
 |---|---|---|
-| POST | `/api/auth/login` | `LoginIn` → `MeOut` (+ cookie). `username` may be the email the account registered with: `MeOut.username` is then its Navidrome name (the player signs in by it) |
+| POST | `/api/auth/login` | `LoginIn` → `MeOut` (+ cookie). `username` accepts the Navidrome login or the email the account registered with. `429` with `Retry-After` when password attempts are throttled |
 | POST | `/api/auth/logout` | → `{ok}` |
 | GET | `/api/auth/me` | → `MeOut` |
 | GET | `/api/auth/options` | → `AuthOptionsOut` (no auth): `invites`, `email_signup` (registration by email: SMTP is configured), `google_client_id` (null — no Google), `music_url` |
@@ -110,7 +114,7 @@ The old unscoped `hm.recentSearches` localStorage key is not imported into an ac
 |---|---|---|
 | GET | `/api/search?q=` | `SearchOut`: library tracks + Deezer (fallback hitmoz) artists/albums (12 each) and the first 25 tracks with ownership; `tracks_next` — offset of the next page of tracks, `null` if there is none (the hitmoz fallback has no pages) |
 | GET | `/api/search/tracks?q=&offset=&limit=25` | `SearchTracksOut` `{tracks, next_offset}` — further tracks of the same search from `offset` (`tracks_next`, then `next_offset`; `null` — the end). Offsets count Deezer's results, so a page may hold fewer tracks than `limit` (repeats are dropped) and may repeat a track of an earlier page: the client drops those by `ref`. `502` if Deezer fails |
-| GET | `/api/search/providers?q=&provider=&group=` | `ProviderSearchOut`: raw downloadable files from hitmoz / hitmos_fm / ytdlp and re-uploads by small channels: `yt_reupload` (plain YouTube without official copies) and `soundcloud` (for a Russian track both are regular sources of downloads and listening, ahead of YouTube Music). `provider` — one source; `group=sources` — only the regular ones, `group=reuploads` — only re-uploads (slower: SoundCloud takes seconds, so the PWA asks for the two groups separately); no `group` — all. A re-upload has `extra.reupload=true`, `extra.channel`, `extra.original_title` (its own title; `artist`/`title` are parsed from it, either order of "Artist - Title"), `extra.uncensored` — the uploader's word: `true` for "(без цензуры)"/"(правильная версия)", `false` for "(без мата)"/clean, absent otherwise. The Hub remembers every file it returns (30 days): it can be listened to (`/api/listen*`) and downloaded (`track_refs`) by its ref `file:<provider>:<provider_id>` |
+| GET | `/api/search/providers?q=&provider=&group=` | `ProviderSearchOut`: raw downloadable files from hitmoz / hitmos_fm / ytdlp and re-uploads by small channels: `yt_reupload` (plain YouTube without official copies) and `soundcloud` (for a Russian track both are regular sources of downloads and listening, ahead of YouTube Music). `provider` — one source; `group=sources` — only the regular ones, `group=reuploads` — only re-uploads (slower: SoundCloud takes seconds, so the PWA asks for the two groups separately); no `group` — all but Soulseek (`provider=soulseek` only by name: seconds per search). A re-upload has `extra.reupload=true`, `extra.channel`, `extra.original_title` (its own title; `artist`/`title` are parsed from it, either order of "Artist - Title"), `extra.uncensored` — the uploader's word: `true` for "(без цензуры)"/"(правильная версия)", `false` for "(без мата)"/clean, absent otherwise. The Hub remembers every file it returns (30 days): it can be listened to (`/api/listen*`) and downloaded (`track_refs`) by its ref `file:<provider>:<provider_id>` |
 | GET | `/api/catalog/artist/{ref}` | `ArtistPageOut` — `ref` like `dz:4505880` or `hm:123`; albums/singles/compilations sorted newest first |
 | GET | `/api/catalog/album/{ref}` | `AlbumOut` with `tracks: TrackOut[]` (`owned`, `nd_song_id`, `downloading`, `star_pending`) |
 
@@ -124,11 +128,17 @@ is under way: show the ♥ filled.
 |---|---|---|
 | POST | `/api/downloads` | `DownloadIn` → `DownloadBatchOut`. One of: `items[]` (artist/title or a picked `candidate`), `track_refs[]`, `album_ref`, `artist_ref` (+`record_types`). Optional `playlist_id` or `new_playlist_name`: tracks are added to that Navidrome playlist once imported. `star=true` (♥ on a track that isn't downloaded): the songs are starred in Navidrome for this user once imported (event `library` `{kind:"starred", song_ids}`); an owned track is starred at once; a ♥ request ignores `playlist_id`/`new_playlist_name` (the song is in «Понравившиеся» anyway). A file ref (`file:<provider>:<provider_id>`, a file the provider search showed) downloads that very file, as if picked in `items[].candidate`; `404` if the Hub doesn't know it. A picked file (or a file ref) of a song the library has from another file (an uncensored re-upload of a censored copy) is not «already owned»: it is downloaded next to the old version (`… [v2]`), with `star` the ♥ moves from the old version to it (event `library` `{kind:"unstarred", song_ids}`), and from then on the catalog track (`nd_song_id`, listening) is the newest version. A track ref this user is downloading already (an active item with the same `track_ref`) gets no second download unless `force`: ♥ makes that download star the song, a plain request makes a download queued only for ♥ a visible one (`star` → false; event `download`); such refs count in `queued`. Refs are expanded by a background job: then `expanding=true` and `queued` counts only `items[]` |
 | GET | `/api/downloads?status=&limit=100` | `DownloadItemOut[]` (newest first; `status` may be a comma list; `nd_song_id` once scanned, `playlist_id` = the batch's target playlist, `track_ref` = the catalog track it came from, or the file ref of a picked file, `star` = queued only for ♥, by an import (`import_id`) or for a «Микс дня» and not asked for explicitly: the Hub's own business — clients don't show it as a download, don't notify about it, the app doesn't download it to the phone; it turns false if the track is then downloaded explicitly (an import's download then also goes first in the queue), the song is still starred, and when a download queued only for ♥ fails (`failed`/`needs_review`): from then on it is the user's download (listed, notified) that still stars the song once a file is picked; `liked` = queued with ♥, the song is starred once imported) |
-| GET | `/api/downloads/{id}` | `DownloadItemOut` with `candidates` |
+| GET | `/api/downloads/{id}` | `DownloadItemOut` with `candidates` and `preview_refs`, the file refs of candidates playable via `/api/listen*` before picking for download. Soulseek and disabled sources are excluded |
 | POST | `/api/downloads/items/{id}/retry` | `RetryIn` (`candidate_index` from `candidates`, or a page `url`) → `DownloadItemOut` |
 
 | POST | `/api/downloads/items/{id}/cancel` | → `DownloadItemOut` |
 | POST | `/api/downloads/clear` | removes finished (`done`/`cancelled`) items from the list → `{removed}`. Items still needed as playlist order anchors are kept until earlier pending additions are resolved |
+
+With Soulseek on (README, «Soulseek»: off unless `SLSKD_API_KEY`, `SLSKD_SLSK_USERNAME`, `SLSKD_SLSK_PASSWORD` are set),
+a download with a catalog record tries `provider=soulseek` first: only files of `soulseek.format` (FLAC by default),
+checked against the remote file name and folders; nothing found, Soulseek offline or the transfer timing out —
+the regular source order follows at once. Listening never uses it. Its candidates carry `extra.peer`,
+`extra.filename`, `extra.format`, `extra.bit_depth`, `extra.sample_rate_hz`.
 
 For a single catalog-track heart, a client that sees `catalog_favorite_download_v1` in `/healthz` can send
 `star=true`, one `track_refs` entry, `favorite_event_id`, `favorite_ts`, `favorite_client`, and
@@ -481,6 +491,7 @@ Row statuses: `owned` (already in library), `auto` (confident, pre-selected), `c
 | Method | Path | Body → Response |
 |---|---|---|
 | GET | `/api/imports` | `ImportOut[]` — the user's imports, newest first |
+| POST | `/api/imports/spotify` | multipart `files`: `Playlist*.json` and/or `YourLibrary.json` of a Spotify account-data export (1–32 files, 8 MB in all, 10 000 entries) → `ImportOut` (`source="spotify"`, `method="file"`, `status="preview"`); then `/start` as for Yandex. `/sync` → `409` (a new export is a new import). `400` not a Spotify export / no music, `413` too large |
 | POST | `/api/imports` | `ImportIn {source: "yandex", method, token?, url?}` → `ImportOut`. `method`: `device` — sign-in by code: `status="auth"`, `auth {user_code, verification_url, expires_at}` (the user enters the code at ya.ru/device; the Hub waits for it, ~5 min); `token` — a Yandex Music token pasted by hand; `profile` — `url` of an open profile (`music.yandex.ru/users/<login>/…`) or the login, no sign-in. `400` bad link / empty token / Yandex refused the code |
 | GET | `/api/imports/{id}` | `ImportOut` |
 | GET | `/api/imports/{id}/items?collection_id=&status=&match=&offset=0&limit=200` | `ImportItemsOut {items: [ImportItemOut], total}` — rows in the service's order; `status`, `match` — comma lists (the report: `match=probable`, `match=not_found`, `status=failed`) |
@@ -490,7 +501,7 @@ Row statuses: `owned` (already in library), `auto` (confident, pre-selected), `c
 | DELETE | `/api/imports/{id}/token` | → `ImportOut`: the stored sign-in is removed |
 | POST | `/api/imports/{id}/cancel` | → `ImportOut`: stops matching; its downloads that have not started are cancelled; done work stays |
 | DELETE | `/api/imports/{id}` | → `{ok}`: forgets the import and its sign-in; music, ♥ and playlists stay |
-| POST | `/api/imports/items/{id}/pick` | → `ImportPickOut {download_item_id}`: a not found (or wrongly matched) track becomes a visible download by its names without the catalog match; the user picks the file on its page (`/api/downloads/{id}`, `needs_review`) |
+| POST | `/api/imports/items/{id}/pick` | → `ImportPickOut {download_item_id}`: a not found (or wrongly matched) track becomes a visible download by its names without the catalog match; the user picks the file on its page (`/api/downloads/{id}`, `needs_review`). The row and the same track in the import's other likes / playlists get `match` `manual` and follow that download |
 | POST | `/api/imports/items/{id}/skip` | → `{ok}`: the row is left out |
 
 `ImportOut.status`: `auth` (waiting for the code) → `fetching` → `preview` (choose what to move; `stats` counts distinct
@@ -499,7 +510,8 @@ tracks of the likes and playlists: `owned`, `to_download`, `est_bytes` at 320 kb
 `albums`, `artists`, `dislikes` (only kept). Without a sign-in (`profile`) there are no private playlists and no dislikes.
 
 Matching (`ImportItemOut.match`): `owned` — in the library; `exact` — a confident catalog match; `probable` — weaker
-(other duration or version; a Cyrillic track Deezer lacks may be matched on hitmoz, `ref` `hm:…`); `not_found`.
+(other duration or version; a track Deezer lacks may be matched on hitmoz, `ref` `hm:…`); `not_found`; `manual` — the
+user picked the file (`pick`): the report counts it in `stats.exact` and lists it under «Точно».
 What a service id turned out to be is shared by all users (`source_map`); a miss is looked up again after 7 days.
 Row `status`: `pending` (not matched yet), `waiting` (economy: matched, downloaded once listened to), `queued`
 (`download_item_id`, `download_status`), `done`, `failed`, `not_found`, `skipped`.
@@ -530,6 +542,7 @@ over, liked albums and artists the library has get ★. The sign-in token is kep
 | POST | `/share-target` | Fallback for Web Share Target if the service worker didn't handle it: images → new assistant task, audio → uploads; redirects to `/#/assistant/{id}` or `/#/upload` (the service worker's path, `/#/share`, opens a new assistant chat with the shared screenshots or text instead) |
 | GET | `/healthz` | `HealthOut` (no auth). `capabilities` includes `typed_favorites_v1`: new clients may send typed events/targets and causal rollback only when present. `launch_events_v1` — the Hub stores `launch_id`/`launch_origin` of `PlayEventIn`; `wave_origin_v1` — it keeps `origin`/`client`/`restart_of` of `WaveStartIn` (an older Hub ignores them silently, clients gate on these anyway). `smart_shuffle_v1` — the smart shuffle's endpoints exist (`/api/smart-shuffle/*`). `favorite_compensation_chains_v1` additionally permits retraction of compensations (late accept); clients retain chain events until this separate capability is present. `web_build` — id of the PWA build the Hub serves (`<meta name="hm-build">` of `index.html`, `null` without a build): an open page with another id reloads itself (`web/src/lib/update.ts`) |
 | GET | `/api/system/health` | `HealthOut` with provider health (admin) |
+| GET | `/api/system/soulseek?search=false` | `SoulseekStatusOut {state, search_matches, search_error}` (admin): `state` `disabled` (no account in .env), `unreachable`, `auth_error` (API key), `connecting`, `disconnected`, `ready`. `search=true` and `ready`: a test search, `search_matches` — files found |
 
 ### Free chat (stage 3.8)
 | Method | Path | Body → Response |

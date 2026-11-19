@@ -27,7 +27,7 @@ class SourcesCfg(BaseModel):
 
 
 class HitmozCfg(BaseModel):
-    domains: list[str] = ["ru.hitmoz.org", "rus.hitmotop.com", "hitmos.me"]
+    domains: list[str] = ["ru.hitmoz.org", "ru.hitmox.net", "rus.hitmotop.com", "hitmos.me"]
     accept_language: str = "ru-RU,ru;q=0.9"
     rate_per_sec: float = 1.0
     max_parallel_downloads: int = 2
@@ -36,6 +36,20 @@ class HitmozCfg(BaseModel):
 class HitmosFmCfg(BaseModel):
     domains: list[str] = ["rus.hitmos.fm"]
     rate_per_sec: float = 1.0
+
+
+class SoulseekCfg(BaseModel):
+    """Soulseek (slskd): a background source for library downloads only, never for listening (a peer's queue and
+    the whole-file transfer take seconds to minutes). It is tried first and takes only files better than the
+    regular sources give: FLAC by default."""
+    format: Literal["any", "flac", "mp3"] = "flac"
+    min_mp3_bitrate_kbps: int = Field(default=320, ge=0, le=320)
+    min_flac_bit_depth: int = Field(default=0, ge=0, le=32)
+    min_flac_sample_rate_hz: int = Field(default=0, ge=0, le=384_000)
+    max_file_mb: int = Field(default=200, ge=1, le=1000)
+    search_timeout_s: float = Field(default=4, ge=1, le=15)  # per search variant
+    transfer_timeout_s: float = Field(default=90, ge=5, le=600)  # includes the peer's queue
+    parallel_transfers: int = Field(default=3, ge=1, le=12)
 
 
 class YtdlpCfg(BaseModel):
@@ -127,6 +141,7 @@ class AppConfig(BaseModel):
     sources: SourcesCfg = SourcesCfg()
     hitmoz: HitmozCfg = HitmozCfg()
     hitmos_fm: HitmosFmCfg = HitmosFmCfg()
+    soulseek: SoulseekCfg = SoulseekCfg()
     ytdlp: YtdlpCfg = YtdlpCfg()
     matching: MatchingCfg = MatchingCfg()
     postcheck: PostcheckCfg = PostcheckCfg()
@@ -154,12 +169,14 @@ class Settings(BaseSettings):
 
     public_music_url: str = ""
     public_hub_url: str = ""
+    public_guest_enabled: bool = False
 
     hub_secret_key: str = ""
     session_days: int = 60
     # OAuth client id ("Web application" type) of the Google Cloud project for "Sign in with Google" in the app;
     # empty — no Google sign-in (README, «Вход через Google»)
     google_client_id: str = ""
+    google_open_signup: bool = False
     invite_days: int = 7
     # Registration by email, without an invite: a code in a letter, sent over SMTP of any mailbox (Gmail with an
     # app password is free; README, «Регистрация по email»). Empty host — no email registration
@@ -197,6 +214,18 @@ class Settings(BaseSettings):
 
     outbound_proxy: str = ""
     outbound_proxy_hosts: str = ""
+
+    # Soulseek through slskd (the `soulseek` Compose profile). Off unless the account (username and password,
+    # which slskd itself reads) and the API key are all set.
+    slskd_url: str = "http://slskd:5030"
+    slskd_api_key: str = ""
+    slskd_slsk_username: str = ""
+    slskd_slsk_password: str = ""
+    slskd_download_dir: Path = Path("/soulseek-downloads")
+
+    @property
+    def soulseek_enabled(self) -> bool:
+        return bool(self.slskd_url and self.slskd_api_key and self.slskd_slsk_username and self.slskd_slsk_password)
 
     # set by tests to skip background workers / scheduled tasks
     disable_background: bool = False

@@ -42,6 +42,30 @@ def snapshot():
     ])
 
 
+@pytest.mark.parametrize("suffix", ["", " (из фильма «Город»)", " (prod. by Producer)"],
+                         ids=["latin-only", "soundtrack", "producer"])
+async def test_import_matches_hitmoz_after_deezer_miss(monkeypatch, suffix):
+    from app.imports.resolve import catalog_track
+    from app.services import svc
+
+    def search(q):
+        if q.title == "Midnight":
+            candidate = cand("7", "https://audio.test/7", title="Midnight")
+            return [candidate.model_copy(update={"artist": "Example", "duration_s": 200})]
+        return []
+
+    deezer = FakeDeezer()
+    hitmoz = FakeProvider(cands=search)
+    monkeypatch.setattr(svc, "deezer", deezer)
+    monkeypatch.setattr(svc, "providers", {"hitmoz": hitmoz})
+
+    result = await catalog_track(track("Example", f"Midnight{suffix}"))
+
+    assert deezer.searched == (2 if suffix else 1)
+    assert hitmoz.searched == 1
+    assert (result.match, result.ref) == ("probable", "hm:7")
+
+
 @pytest.fixture
 async def env(hub_env, monkeypatch):
     from app.imports.sources import yandex
@@ -183,6 +207,37 @@ async def items(c: httpx.AsyncClient, imp: dict, **params) -> list[dict]:
     return r.json()["items"]
 
 
+async def test_spotify_export_preview_and_economy_import_preserve_playlist_order(env):
+    def track(raw, key):
+        return {"track": {"artistName": raw["artist"], "trackName": raw["title"],
+                          "trackUri": f"spotify:track:{key}"}}
+
+    import json
+
+    playlists = {"playlists": [{"name": "Spotify mix", "items": [
+        track(OSEN, "AB1"), {"episode": {"episodeName": "Podcast"}}, track(GOROD, "AB2"), track(OSEN, "AB1"),
+    ]}]}
+    library = {"tracks": [{"artist": GOROD["artist"], "track": GOROD["title"], "uri": "spotify:track:AB2"}]}
+    client = env["client"]
+    response = await client.post("/api/imports/spotify", files=[
+        ("files", ("Playlist1.json", json.dumps(playlists), "application/json")),
+        ("files", ("YourLibrary.json", json.dumps(library), "application/json")),
+    ])
+    assert response.status_code == 200, response.text
+    imp = response.json()
+    assert (imp["source"], imp["method"], imp["status"]) == ("spotify", "file", "preview")
+    assert imp["stats"]["tracks"] == imp["stats"]["owned"] == 2
+    response = await client.post(f"/api/imports/{imp['id']}/start", json={
+        "mode": "economy", "collection_ids": [c["id"] for c in imp["collections"]],
+    })
+    assert response.status_code == 200, response.text
+    await run_imports()
+    assert any(p["name"] == "Spotify mix" and p["songs"] == ["ndB", "ndA"]
+               for p in env["state"]["playlists"].values())
+    assert "ndA" in env["state"]["stars"]
+    assert (await client.post(f"/api/imports/{imp['id']}/sync")).status_code == 409
+
+
 async def test_preview_counts_what_the_library_has(env):
     c = env["client"]
     imp = await prepared(c)
@@ -315,6 +370,12 @@ async def test_full_import_downloads_in_the_background(env):
 
 
 async def test_second_import_reuses_the_matches(env):  # two whole imports: ~2x a scenario
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.db import session_scope
+    from app.models import User, utcnow
     from app.services import svc
 
     c = env["client"]
@@ -325,11 +386,31 @@ async def test_second_import_reuses_the_matches(env):  # two whole imports: ~2x 
                      json={"collection_ids": [x["id"] for x in imp["collections"]]})
         await run_imports()
         searched.append(svc.deezer.searched)
+        async with session_scope() as s:
+            await s.execute(update(User).values(yandex_import_at=utcnow() - timedelta(days=7)))
     assert searched[0] > 0 and searched[1] == searched[0]  # the next import of the same songs does not search again
     assert len((await c.get("/api/imports")).json()) == 2
 
 
+async def test_yandex_import_limit_survives_removal_and_concurrent_requests(env):
+    c = env["client"]
+    results = await asyncio.gather(*(c.post("/api/imports", json={"method": "token", "token": "test"})
+                                     for _ in range(2)))
+    assert sorted(r.status_code for r in results) == [200, 429]
+    accepted = next(r for r in results if r.status_code == 200)
+    rejected = next(r for r in results if r.status_code == 429)
+    assert 0 < int(rejected.headers["Retry-After"]) <= 7 * 86400
+    await run_imports()
+    iid = accepted.json()["id"]
+    assert (await c.delete(f"/api/imports/{iid}")).status_code == 200
+    assert (await c.post("/api/imports", json={"method": "token", "token": "test"})).status_code == 429
+
+
 async def test_not_found_track_is_picked_by_hand(env):
+    from app.db import session_scope
+    from app.models import DownloadItem
+    from app.services import svc
+
     c = env["client"]
     imp = await prepared(c)
     await c.post(f"/api/imports/{imp['id']}/start", json={"collection_ids": [imp["collections"][1]["id"]]})
@@ -338,9 +419,78 @@ async def test_not_found_track_is_picked_by_hand(env):
     assert row["title"] == "Нет такого"
     r = await c.post(f"/api/imports/items/{row['id']}/pick")
     assert r.status_code == 200, r.text
-    dl = (await c.get(f"/api/downloads/{r.json()['download_item_id']}")).json()
+    dl_id = r.json()["download_item_id"]
+    dl = (await c.get(f"/api/downloads/{dl_id}")).json()
     assert (dl["title"], dl["star"], dl["import_id"]) == ("Нет такого", False, imp["id"])  # a visible download
     assert (await jobs("download_item"))[0].priority == 0
+    # picked by hand: the row leaves «not found» (it would come back after a reload) and counts as sure
+    assert await items(c, imp, match="not_found") == []
+    assert [(x["id"], x["status"]) for x in await items(c, imp, match="manual")] == [(row["id"], "queued")]
+    st = (await c.get(f"/api/imports/{imp['id']}")).json()["stats"]
+    assert (st["not_found"], st["exact"]) == (0, 2)  # Группа крови and the picked one; the rest is owned
+
+    first = cand("7", "https://audio.test/7", title="Нет такого")
+    second = cand("8", "https://audio.test/8", title="Нет такого (другая версия)")
+    peer = cand("9", "https://audio.test/9", provider="soulseek")
+    disabled = cand("10", "https://audio.test/10", provider="soundcloud")
+    svc.providers["soulseek"] = FakeProvider("soulseek", streams=False)
+    async with session_scope() as s:
+        dl = await s.get(DownloadItem, dl_id)
+        dl.status = "needs_review"
+        dl.candidates_json = [candidate.model_dump(mode="json") for candidate in (first, second, peer, disabled)]
+
+    r = await c.get(f"/api/downloads/{dl_id}")
+
+    assert r.status_code == 200, r.text
+    detail = r.json()
+    assert detail["chosen"] is None
+    assert [candidate["provider_id"] for candidate in detail["candidates"]] == ["7", "8", "9", "10"]
+    assert detail["preview_refs"] == ["file:hitmoz:7", "file:hitmoz:8"]
+    for ref in detail["preview_refs"]:
+        preview = await c.get("/api/listen", params={"ref": ref})
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["page_url"] == f"https://hitmoz.test/song/{ref.rsplit(':', 1)[1]}"
+    for ref in ("file:soulseek:9", "file:soundcloud:10"):
+        assert (await c.get("/api/listen", params={"ref": ref})).status_code == 404
+    assert (await c.get(f"/api/downloads/{dl_id}")).json()["chosen"] is None
+
+
+async def test_picked_probable_track_stays_picked_when_the_library_has_it(env):  # justman-1/HomeMusic-public#5
+    from app.catalog.models import CatalogTrack
+    from app.db import session_scope
+    from app.imports import apply
+    from app.imports.sources.base import SnapItem
+    from app.models import DownloadItem, Import
+    from app.services import svc
+
+    zvezda = track("Кино", "Звезда по имени Солнце", 255)  # 30 s longer than the catalog's: probable
+    svc.deezer.more = [CatalogTrack(ref="dz:300", source="dz", id="300", title="Звезда по имени Солнце",
+                                    artist="Кино", duration_s=225)]
+    snap = snapshot()
+    snap.collections[0].items.append(SnapItem("5", zvezda))
+    snap.collections[1].items.append(SnapItem("5", zvezda))
+    env["state"]["snapshot"] = snap
+    c = env["client"]
+    imp = await prepared(c)
+    await c.post(f"/api/imports/{imp['id']}/start", json={"collection_ids": [x["id"] for x in imp["collections"][:2]]})
+    await run_imports()
+    liked, listed = await items(c, imp, match="probable")  # in likes and in the playlist
+    assert (await c.get(f"/api/imports/{imp['id']}")).json()["stats"]["probable"] == 1  # one track
+
+    r = await c.post(f"/api/imports/items/{liked['id']}/pick")
+    assert r.status_code == 200, r.text
+    dl_id = r.json()["download_item_id"]
+    # the file the user picks turns out to be in the library: the download ends at once
+    async with session_scope() as s:
+        dl = await s.get(DownloadItem, dl_id)
+        dl.status, dl.warnings = "done", ["Уже есть в библиотеке"]
+        await apply.refresh_items(s, await s.get(Import, imp["id"]))
+
+    # after a reload the track is no longer «probable» (no «Выбрать файл» again): both rows are picked, done
+    assert await items(c, imp, match="probable") == []
+    assert sorted((x["id"], x["status"], x["download_item_id"]) for x in await items(c, imp, match="manual")) ==         sorted((x["id"], "done", dl_id) for x in (liked, listed))
+    st = (await c.get(f"/api/imports/{imp['id']}")).json()["stats"]
+    assert st["probable"] == 0
 
 
 async def test_unliking_a_waiting_track(env):

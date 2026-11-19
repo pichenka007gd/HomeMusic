@@ -9,11 +9,19 @@ from __future__ import annotations
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
 
 from tests.support import ND
+
+
+@pytest.fixture(autouse=True)
+def storage_capacity(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.library import storage
+
+    monkeypatch.setattr(storage, "shutil", SimpleNamespace(disk_usage=lambda _: SimpleNamespace(free=100 * 2**30)))
 
 
 @pytest.fixture(scope="session")
@@ -63,7 +71,7 @@ def hub_env(db_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> I
 
 
 def _clear_caches() -> None:
-    from app import accounts, config, google_auth, security
+    from app import accounts, auth, config, google_auth, security
     from app.library.navidrome import NavidromeAdmin, NavidromeHistory
     from app.mixes import sources, wave
     from app.providers import ytdlp
@@ -71,10 +79,10 @@ def _clear_caches() -> None:
     config.get_settings.cache_clear()
     security._fernet.cache_clear()
     accounts._failures.clear()
+    auth._password_attempts.clear()
     google_auth._keys.clear()
     NavidromeAdmin.forget_token()
     NavidromeHistory.forget_tokens()
     ytdlp._media_hosts.clear()
     sources._lastfm_limiter = None
     wave._rt.clear()
-

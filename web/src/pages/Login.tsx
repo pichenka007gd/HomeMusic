@@ -1,7 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api/client';
 import type { MeOut } from '../api/types';
+import { GoogleLogin } from '../components/GoogleLogin';
 import { Button, Field, Notice } from '../components/ui';
+import { STANDALONE } from '../lib/embedded';
+import { Link } from '../lib/router';
 
 // register — by an invite code; email — by a code from a letter, no invite needed
 type Mode = 'login' | 'register' | 'email';
@@ -12,9 +15,10 @@ const SUBTITLE: Record<Mode, string> = {
   email: 'Новый аккаунт по почте',
 };
 
-export function LoginPage({ onLogin }: { onLogin: (me: MeOut) => void }) {
+export function LoginPage({ onLogin, guest }: { onLogin: (me: MeOut) => void; guest?: boolean }) {
   const [mode, setMode] = useState<Mode>('login');
   const [emailSignup, setEmailSignup] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState<string>();
   const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
   // the address the letter went to: the rest of the form shows once it is sent
@@ -29,7 +33,10 @@ export function LoginPage({ onLogin }: { onLogin: (me: MeOut) => void }) {
 
   useEffect(() => {
     const ctl = new AbortController();
-    api.authOptions(ctl.signal).then((o) => setEmailSignup(!!o.email_signup), () => {});
+    api.authOptions(ctl.signal).then((o) => {
+      setEmailSignup(!!o.email_signup);
+      if (STANDALONE && o.google_web_enabled && o.google_client_id) setGoogleClientId(o.google_client_id);
+    }, () => {});
     return () => ctl.abort();
   }, []);
 
@@ -177,8 +184,12 @@ export function LoginPage({ onLogin }: { onLogin: (me: MeOut) => void }) {
           {!awaitingLetter && (
             <>
               <Field label={mode === 'login' ? 'Имя или почта' : 'Имя'}>
-                <input className="input" autoComplete="username" {...plain} value={username} onChange={(e) => setUsername(e.target.value)} required />
+                <input className="input" autoComplete="username" {...plain} value={username} onChange={(e) => setUsername(e.target.value)}
+                  aria-describedby={mode === 'login' ? 'login-case-hint' : undefined} required />
               </Field>
+              {mode === 'login' && (
+                <p id="login-case-hint" className="text-xs text-dim">Регистр латинских букв в логине не учитывается.</p>
+              )}
               <Field label="Пароль">
                 <input
                   className="input"
@@ -202,7 +213,9 @@ export function LoginPage({ onLogin }: { onLogin: (me: MeOut) => void }) {
             {mode === 'login' ? 'Войти' : awaitingLetter ? 'Получить код' : 'Создать аккаунт'}
           </Button>
         </form>
+        {mode === 'login' && googleClientId && <GoogleLogin clientId={googleClientId} onLogin={onLogin} />}
         <div className="mt-6 flex flex-col items-center">
+          {guest && <Link to="/home" className="flex min-h-11 items-center text-sm font-semibold text-accent">Слушать без аккаунта</Link>}
           {mode === 'login' ? (
             <>
               {emailSignup && (

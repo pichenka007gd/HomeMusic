@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
-rem Toggle the HomeMusic stack (Navidrome, Hub, tunnel): starts it when it is off or partly down, stops it when it runs.
+rem Toggle the local HomeMusic stack: starts it when it is off or partly down, stops it when it runs.
+rem Optional gateway/embedder/soulseek services follow COMPOSE_PROFILES in .env.
 rem Starts Docker Desktop if needed. Never stops Docker Desktop itself: other containers may run in it.
 setlocal
 title HomeMusic
@@ -38,7 +39,7 @@ goto wait_docker
 
 
 :start
-echo Запускаю HomeMusic: Navidrome, Хаб, туннель...
+echo Запускаю HomeMusic: Navidrome, Хаб и выбранные профили из .env...
 docker compose up -d
 if errorlevel 1 goto fail
 echo Жду, пока Хаб ответит...
@@ -59,6 +60,7 @@ echo.
 echo HomeMusic включён.
 echo   Хаб:       http://localhost:8080
 echo   Navidrome: http://localhost:4533
+echo   На телефоне выберите адрес этого ПК в своей локальной сети.
 goto done
 
 

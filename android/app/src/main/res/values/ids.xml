@@ -1,0 +1,4 @@
+<resources>
+    <item name="tag_link_original_color" type="id" />
+    <item name="homemusic_player_dislike" type="id" />
+</resources>

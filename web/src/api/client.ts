@@ -55,6 +55,7 @@ import type {
   SearchOut,
   SearchHistoryOut,
   SearchTracksOut,
+  SoulseekStatusOut,
   StarIn,
   StarOut,
   StarredOut,
@@ -86,7 +87,7 @@ export class ApiError extends Error {
 export const UNAUTHORIZED_EVENT = 'hm:unauthorized';
 
 function onUnauthorized(path: string) {
-  if (!path.startsWith('/api/auth/login') && !path.startsWith('/api/auth/register') && !path.startsWith('/api/auth/email/')) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (!/^\/api\/auth\/(login|register|email\/|google\/web)/.test(path)) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
 }
 
 function detailToMessage(detail: unknown, status: number): string {
@@ -237,6 +238,8 @@ export const api = {
   me: (signal?: AbortSignal) => request<MeOut>('GET', '/api/auth/me', { signal }),
   register: (body: RegisterIn) => request<MeOut>('POST', '/api/auth/register', { json: body }),
   authOptions: (signal?: AbortSignal) => request<AuthOptionsOut>('GET', '/api/auth/options', { signal }),
+  googleNonce: (signal: AbortSignal) => request<{ nonce: string }>('POST', '/api/auth/google/web/nonce', { signal }),
+  googleWeb: (id_token: string) => request<MeOut>('POST', '/api/auth/google/web', { json: { id_token } }),
   emailCode: (body: { email: string }) => request<EmailCodeOut>('POST', '/api/auth/email/code', { json: body }),
   emailRegister: (body: EmailRegisterIn) => request<MeOut>('POST', '/api/auth/email/register', { json: body }),
   unlinkGoogle: () => request<MeOut>('DELETE', '/api/auth/google/link'),
@@ -247,6 +250,9 @@ export const api = {
   invites: (signal?: AbortSignal) => request<InviteOut[]>('GET', '/api/admin/invites', { signal }),
   createInvite: (body: InviteIn) => request<InviteOut>('POST', '/api/admin/invites', { json: body }),
   deleteInvite: (id: number) => request<OkOut>('DELETE', `/api/admin/invites/${id}`),
+
+  soulseekStatus: (search = false, signal?: AbortSignal) =>
+    request<SoulseekStatusOut>('GET', withQuery('/api/system/soulseek', { search: search ? 'true' : undefined }), { signal }),
 
   // search / catalog
   search: (q: string, signal?: AbortSignal) => cachedGet<SearchOut>(withQuery('/api/search', { q }), signal),
@@ -364,6 +370,11 @@ export const api = {
   // imports from music services
   imports: (signal?: AbortSignal) => request<ImportOut[]>('GET', '/api/imports', { signal }),
   createImport: (body: ImportIn) => request<ImportOut>('POST', '/api/imports', { json: body }),
+  importSpotify: (files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append('files', file);
+    return request<ImportOut>('POST', '/api/imports/spotify', { form });
+  },
   importGet: (id: number, signal?: AbortSignal) => request<ImportOut>('GET', `/api/imports/${id}`, { signal }),
   importItems: (id: number, q: { collection_id?: number; status?: string; match?: string; offset?: number; limit?: number }, signal?: AbortSignal) =>
     request<ImportItemsOut>('GET', withQuery(`/api/imports/${id}/items`, q), { signal }),

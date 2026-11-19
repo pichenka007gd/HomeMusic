@@ -18,7 +18,7 @@ from app.jobs.downloads import create_items, item_links, item_out, item_ref
 from app.jobs.queue import enqueue, notify
 from app.library.owned import ACTIVE_STATUSES, find_existing, quiet
 from app.models import DownloadBatch, DownloadItem, Job, PendingPlaylistAdd, User
-from app.providers.base import Candidate, TrackQuery
+from app.providers.base import Candidate, TrackQuery, file_ref
 from app.services import svc
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
@@ -205,7 +205,12 @@ async def _own_item(s: AsyncSession, user: User, item_id: int) -> DownloadItem:
 @router.get("/{item_id}", response_model=DownloadItemOut)
 async def get_item(item_id: int, user: User = Depends(current_user), s: AsyncSession = Depends(get_session, scope="function")):
     item = await _own_item(s, user, item_id)
-    return item_out(item, detail=True, links=(await item_links(s, [item]))[item.id])
+    out = item_out(item, detail=True, links=(await item_links(s, [item]))[item.id])
+    # Soulseek is a download-only source; SoundCloud can play from a local copy.
+    playable = [c for c in out.candidates or [] if c.provider in svc.providers and c.provider != "soulseek"]
+    await listen.remember_files(playable)
+    out.preview_refs = [file_ref(c.provider, c.provider_id) for c in playable]
+    return out
 
 
 HITMOZ_SONG = re.compile(r"https?://[^/]*hitm[a-z]*\.[a-z]+/song/(\d+)", re.I)

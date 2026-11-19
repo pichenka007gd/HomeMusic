@@ -27,4 +27,4 @@ COPY hub/ ./
 RUN rm -rf /app/.venv /app/data && uv sync --frozen --no-dev
 COPY --from=web /src/hub/app/static /app/app/static
 EXPOSE 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*", "--no-access-log"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--no-access-log"]

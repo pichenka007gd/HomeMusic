@@ -2,19 +2,38 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from datetime import timedelta
+from math import ceil
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import ImportIn, ImportItemsOut, ImportOut, ImportPickOut, ImportStartIn
 from app.auth import current_user
 from app.db import get_session
 from app.imports import apply, core
+from app.imports.sources import spotify
 from app.imports.sources.base import SourceError
 from app.jobs.queue import PermanentError, enqueue, notify
-from app.models import DownloadItem, Import, ImportCollection, ImportItem, Track, User
+from app.models import DownloadItem, Import, ImportCollection, ImportItem, Track, User, utcnow
 
 router = APIRouter(prefix="/api/imports", tags=["imports"])
+YANDEX_COOLDOWN = timedelta(days=7)
+
+
+async def _reserve_yandex(s: AsyncSession, user_id: int, source: str) -> None:
+    if source != "yandex":
+        return
+    now = utcnow()
+    changed = await s.execute(update(User).where(
+        User.id == user_id, or_(User.yandex_import_at.is_(None), User.yandex_import_at <= now - YANDEX_COOLDOWN),
+    ).values(yandex_import_at=now))
+    if changed.rowcount == 0:
+        last = await s.scalar(select(User.yandex_import_at).where(User.id == user_id))
+        wait = max(1, ceil((last + YANDEX_COOLDOWN - now).total_seconds())) if last else 1
+        raise HTTPException(429, "Импорт Яндекс Музыки доступен раз в 7 дней",
+                            headers={"Retry-After": str(wait)})
 
 
 async def _own(s: AsyncSession, user: User, import_id: int) -> Import:
@@ -33,6 +52,7 @@ async def list_imports(user: User = Depends(current_user), s: AsyncSession = Dep
 @router.post("", response_model=ImportOut)
 async def create(body: ImportIn, user: User = Depends(current_user),
                  s: AsyncSession = Depends(get_session, scope="function")):
+    await _reserve_yandex(s, user.id, body.source)
     try:
         imp = await core.create(s, user.id, source=body.source, method=body.method, token=body.token, url=body.url)
     except SourceError as e:
@@ -42,6 +62,30 @@ async def create(body: ImportIn, user: User = Depends(current_user),
     await s.commit()
     notify()
     return out
+
+
+@router.post("/spotify", response_model=ImportOut)
+async def import_spotify(files: list[UploadFile] = File(), user: User = Depends(current_user),
+                         s: AsyncSession = Depends(get_session, scope="function")):
+    if not 1 <= len(files) <= spotify.MAX_FILES:
+        raise HTTPException(400, f"Выберите от 1 до {spotify.MAX_FILES} файлов JSON")
+    remaining = spotify.MAX_BYTES
+    payloads = []
+    for file in files:
+        data = await file.read(remaining + 1)
+        remaining -= len(data)
+        if remaining < 0:
+            raise HTTPException(413, "Файлы JSON превышают 8 МБ")
+        payloads.append(data)
+    try:
+        snapshot = spotify.parse(payloads)
+    except SourceError as e:
+        raise HTTPException(400, str(e)) from e
+    imp = Import(user_id=user.id, source="spotify", method="file", status="preview")
+    s.add(imp)
+    await s.flush()
+    await core.store_snapshot(s, imp, snapshot)
+    return await core.import_out(s, imp)
 
 
 @router.get("/{import_id}", response_model=ImportOut)
@@ -119,8 +163,11 @@ async def sync(import_id: int, user: User = Depends(current_user),
         raise HTTPException(409, "Импорт ещё идёт")
     if imp.started_at is None:
         raise HTTPException(409, "Импорт ещё не запущен")
+    if imp.method == "file":
+        raise HTTPException(409, "Загрузите новый экспорт Spotify")
     if imp.method != "profile" and not imp.token_enc:
         raise HTTPException(409, "Вход в сервис удалён — начните новый перенос")
+    await _reserve_yandex(s, user.id, imp.source)
     imp.status = "fetching"
     await enqueue(s, "import_fetch", {"import_id": imp.id}, priority=core.FETCH_PRIORITY)
     await s.flush()
@@ -187,7 +234,15 @@ async def pick(item_id: int, user: User = Depends(current_user),
     qj = {"query": apply.track_query(raw).model_dump(), "meta": {}, "import": {"id": imp.id, "item": it.id},
           "requested": True}  # a like gets its ♥ from the import, in order (`apply.sync_likes`)
     dl = await apply.new_download(s, imp, qj, 0)
-    it.download_item_id, it.status, it.ref = dl.id, "queued", None
+    # the user decides the file now: the row (and the same track in the other likes / playlists of the import) is no
+    # longer «probable» / «not found», whatever the download ends with — even «already in the library»
+    twins = (await s.execute(
+        select(ImportItem).join(ImportCollection, ImportCollection.id == ImportItem.collection_id)
+        .where(ImportItem.import_id == imp.id, ImportItem.external_id == it.external_id,
+               ImportCollection.kind.in_(("likes", "playlist")), ImportItem.status != "skipped",
+               ImportItem.match.is_distinct_from("owned")))).scalars().all()
+    for row in {it, *twins}:
+        row.download_item_id, row.status, row.ref, row.match = dl.id, "queued", None, "manual"
     await s.commit()
     notify()
     return ImportPickOut(download_item_id=dl.id)

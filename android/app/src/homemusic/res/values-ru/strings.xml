@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HomeMusic</string>
+    <!-- The heart button: «Понравившиеся», as in Library. -->
+    <string name="song_list_page_starred">Понравившиеся</string>
+
+    <!-- Design review 2026-10-19: Tempus strings reworded for the family (upstream values-ru stays untouched). -->
+    <!-- Bottom navigation and drawer: the tab holds downloaded music, it is not an action. -->
+    <string name="menu_download_label">Скачанное</string>
+    <string name="nav_drawer_index">Разделы</string>
+    <!-- One name for starred everywhere: «Понравившиеся» with the heart, as in Library and the player. -->
+    <string name="home_title_starred_tracks">Понравившиеся треки</string>
+    <string name="home_title_starred_albums">Понравившиеся альбомы</string>
+    <string name="home_title_starred_artists">Понравившиеся исполнители</string>
+    <!-- «В избранное» on a playlist pins it to Home; it has nothing to do with starred. -->
+    <string name="menu_pin_button">Закрепить</string>
+    <string name="menu_unpin_button">Открепить</string>
+    <!-- Counts without word forms: Tempus formats them with getString, so «1 треков» is avoided by wording. -->
+    <string name="album_page_tracks_count_and_duration">Треков: %1$d • %2$d мин</string>
+    <string name="playlist_counted_tracks">Треков: %1$d • %2$s</string>
+    <string name="playlist_song_count">Плейлист • треков: %1$d</string>
+    <string name="settings_scan_result">Просканировано треков: %1$d</string>
+    <string name="folder_play_playing">Играет треков: %d</string>
+    <!-- «Все альбомы» pages: plain titles instead of «Обзор …». -->
+    <string name="album_catalogue_title_expanded">Альбомы</string>
+    <string name="artist_catalogue_title_expanded">Исполнители</string>
+    <string name="genre_catalogue_title_expanded">Жанры</string>
+    <string name="playlist_catalogue_title_expanded">Плейлисты</string>
+    <!-- «Взгляд в прошлое» tiles open a decade (year … year + 10). -->
+    <string name="song_list_page_year">%1$d-е</string>
+    <string name="search_description_empty_response">Ничего не нашлось. Попробуйте написать по-другому или поищите в каталоге во вкладке «Хаб».</string>
+    <string name="artist_page_title_most_streamed_song_unavailable">Популярных треков нет</string>
+    <string name="settings_always_on_display">Не гасить экран</string>
+    <string name="settings_permissions">Разрешения приложения</string>
+    <string name="server_unreachable_dialog_title">Нет связи с сервером</string>
+    <string name="server_unreachable_dialog_summary">Доступна скачанная музыка. Если продолжить, следующая проверка будет через час.</string>
+    <string name="server_unreachable_dialog_positive_button">Продолжить</string>
+    <string name="server_unreachable_dialog_neutral_button">Ко входу</string>
+    <string name="server_unreachable_dialog_negative_button">Отмена</string>
+    <!-- Track info: plain words instead of file-system terms. -->
+    <string name="track_info_suffix">Формат</string>
+    <string name="track_info_transcoded_content_type">Тип после перекодирования</string>
+    <string name="track_info_transcoded_suffix">Формат после перекодирования</string>
+    <!-- Theme editor: the first tile is the custom color picker and shows the current accent. -->
+    <string name="la_theme_card_flirt_red_description">Свой цвет (сейчас выбран)</string>
+    <!-- The precache loads only the first seconds of the next tracks (QueueLoading); the rest waits on the server. -->
+    <string name="settings_precache_tracks">Предзагрузка следующих треков</string>
+    <string name="settings_precache_tracks_summary">Заранее загружать начало (15 с) следующих треков очереди: переключение мгновенное, а остальное Хаб держит наготове.</string>
+</resources>

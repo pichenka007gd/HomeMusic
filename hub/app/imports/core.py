@@ -98,7 +98,7 @@ async def stats(s: AsyncSession, imp: Import, colls: list[ImportCollection]) -> 
             out.pending += 1
         elif status == "waiting":
             out.waiting += 1
-        if match == "exact":
+        if match in ("exact", "manual"):  # «manual»: the user picked the file by hand
             out.exact += 1
         elif match == "probable":
             out.probable += 1

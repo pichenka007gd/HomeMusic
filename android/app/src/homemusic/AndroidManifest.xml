@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HomeMusic flavor additions, merged into the main manifest. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Stage 4.6: install updates downloaded from the Hub -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <application>
+        <!-- Stage 4.4: Android «Поделиться» → Hub (screenshots → assistant, audio → upload form, links → assistant) -->
+        <activity
+            android:name="com.eddyizm.tempus.homemusic.HubShareActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/homemusic_share_label"
+            android:taskAffinity="app.homemusic.share"
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+            </intent-filter>
+        </activity>
+
+        <!-- Design defaults (green accent, black dark theme), seeded before the first screen -->
+        <provider
+            android:name="com.eddyizm.tempus.homemusic.HomeDefaults"
+            android:authorities="${applicationId}.homemusic.defaults"
+            android:exported="false" />
+
+        <provider
+            android:name="com.eddyizm.tempus.homemusic.HubFileProvider"
+            android:authorities="${applicationId}.homemusic.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/homemusic_file_paths" />
+        </provider>
+    </application>
+</manifest>

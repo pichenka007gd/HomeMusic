@@ -11,6 +11,19 @@ import { useSession } from '../lib/session';
 import { AlbumRow, ArtistRow } from './MediaLibrary';
 import { MixCard } from './Mix';
 
+const trackCountFormat = new Intl.NumberFormat('ru-RU');
+const trackCountPlural = new Intl.PluralRules('ru-RU');
+
+export function LibraryCount({ value }: { value: number }) {
+  const plural = trackCountPlural.select(value);
+  return (
+    <p className="mt-1 text-sm text-muted">
+      <span className="font-semibold text-accent">{trackCountFormat.format(value)}</span>{' '}
+      {plural === 'one' ? 'трек' : plural === 'few' ? 'трека' : 'треков'}
+    </p>
+  );
+}
+
 /** «Главная» of the PWA in a plain browser (`STANDALONE`), like the app's: «Микс дня», «Моя волна», shortcuts to
  * the library, «Радиостанции» (a wave by a library artist, liked ones first) and rows of albums Navidrome knows the
  * user plays. Inside the app this is its native home screen. */
@@ -25,6 +38,7 @@ export function HomePage() {
     <div className="pb-4">
       <header className="pt-safe px-4 pb-1 pt-4">
         <h1 className="text-2xl font-bold">{greeting()}, {me.username}</h1>
+        {d?.track_count != null && <LibraryCount value={d.track_count} />}
       </header>
       {desktop ? (
         <>

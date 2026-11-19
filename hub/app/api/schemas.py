@@ -43,6 +43,8 @@ class AuthOptionsOut(BaseModel):
     invites: bool = True
     email_signup: bool = False
     google_client_id: str | None = None
+    google_web_enabled: bool = False
+    guest_enabled: bool = False
     # the public address of the Navidrome these accounts are for: the app offers registration only for it
     music_url: str = ""
 
@@ -69,7 +71,7 @@ class EmailRegisterIn(BaseModel):
 
 
 class GoogleIn(BaseModel):
-    id_token: str
+    id_token: str = Field(max_length=8192)
     # for a Google account that is not linked yet: register it with an invite code
     code: str | None = None
     username: str | None = None
@@ -435,6 +437,7 @@ class DownloadItemOut(BaseModel):
     liked: bool = False  # queued with ♥: the song is starred once imported
     import_id: int | None = None  # queued by this import (`/api/imports`)
     candidates: list[Candidate] | None = None  # only in detail view
+    preview_refs: list[str] | None = None  # playable candidates in the detail view
     chosen: Candidate | None = None
     created_at: datetime
     updated_at: datetime
@@ -553,6 +556,7 @@ class NdLikedOut(BaseModel):
 
 
 class NdHomeOut(BaseModel):
+    track_count: int | None = None
     recent: list[NdAlbumOut] = []
     frequent: list[NdAlbumOut] = []
     newest: list[NdAlbumOut] = []
@@ -637,14 +641,14 @@ class AssistantTextIn(BaseModel):
 
 # --- imports from music services ----------------------------------------------------------
 
-ImportSource = Literal["yandex"]
-ImportMethod = Literal["device", "token", "profile"]
+ImportSource = Literal["yandex", "spotify"]
+ImportMethod = Literal["device", "token", "profile", "file"]  # file: a Spotify export (POST /api/imports/spotify)
 ImportMode = Literal["economy", "full"]
 
 
 class ImportIn(BaseModel):
-    source: ImportSource = "yandex"
-    method: ImportMethod = "device"
+    source: Literal["yandex"] = "yandex"  # a Spotify export comes as files: POST /api/imports/spotify
+    method: Literal["device", "token", "profile"] = "device"
     token: str | None = None  # method "token"
     url: str | None = None  # method "profile": a link to the profile or the login
 
@@ -722,7 +726,7 @@ class ImportItemOut(BaseModel):
     duration_s: int | None = None
     cover_url: str | None = None
     ref: str | None = None  # catalog track / album / artist
-    match: str | None = None  # owned/exact/probable/not_found
+    match: str | None = None  # owned/exact/probable/not_found/manual
     score: float | None = None
     # pending/waiting/queued/done/failed/not_found/skipped
     status: str
@@ -875,6 +879,13 @@ class DislikeOut(BaseModel):
 
 
 MixMode = Literal["normal", "favorites", "discover"]
+
+
+class SoulseekStatusOut(BaseModel):
+    """GET /api/system/soulseek (admin): `disabled` — no Soulseek account in .env, the source is off."""
+    state: Literal["disabled", "unreachable", "auth_error", "connecting", "disconnected", "ready"]
+    search_matches: int | None = None  # files a test search found (search=true)
+    search_error: bool = False
 
 
 class MixTrackOut(TrackOut):

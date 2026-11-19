@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api, withQuery } from '../api/client';
 import type { DownloadItemOut } from '../api/types';
-import { CandidateRow } from '../components/candidate';
+import { CandidateRow, fileRef } from '../components/candidate';
 import { Icon } from '../components/Icon';
 import { Button, ErrorState, Field, Loading, Notice, PageHeader, ProgressBar, SectionTitle, StatusChip } from '../components/ui';
 import { useHubEvent } from '../lib/events';
@@ -19,7 +19,7 @@ export function DownloadDetailPage({ id }: { id: number }) {
   useHubEvent('download', (d) => {
     if (d.id !== id) return;
     // Status changed → candidates may have changed too; refetch the full detail.
-    res.setData((prev) => (prev ? { ...prev, ...d, candidates: prev.candidates } : prev));
+    res.setData((prev) => (prev ? { ...prev, ...d, candidates: prev.candidates, preview_refs: prev.preview_refs } : prev));
     if (d.status === 'needs_review' || d.status === 'failed' || d.status === 'done') res.reload(true);
   });
   useHubEvent('reconnect', () => res.reload(true));
@@ -41,7 +41,9 @@ export function DownloadDetailPage({ id }: { id: number }) {
 
   const item = res.data;
   const active = DOWNLOAD_ACTIVE.includes(item.status);
-  const apply = (r: DownloadItemOut | undefined) => r && res.setData((prev) => ({ ...prev, ...r, candidates: r.candidates ?? prev?.candidates }));
+  const apply = (r: DownloadItemOut | undefined) => r && res.setData((prev) => ({
+    ...prev, ...r, candidates: r.candidates ?? prev?.candidates, preview_refs: r.preview_refs ?? prev?.preview_refs,
+  }));
 
   const run = async (key: string, fn: () => Promise<DownloadItemOut>) => {
     setBusy(key);
@@ -57,6 +59,7 @@ export function DownloadDetailPage({ id }: { id: number }) {
   };
 
   const candidates = item.candidates ?? [];
+  const previewRefs = new Set(item.preview_refs);
   const chosenKey = item.chosen ? `${item.chosen.provider}:${item.chosen.provider_id}` : null;
 
   return (
@@ -145,6 +148,7 @@ export function DownloadDetailPage({ id }: { id: number }) {
                 <li key={key + i}>
                   <CandidateRow
                     c={c}
+                    preview={previewRefs.has(fileRef(c))}
                     action={
                       isChosen ? (
                         <span className="text-sm text-accent">Выбран</span>

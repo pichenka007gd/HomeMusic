@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HomeMusic: «Рекомендация на основе …» with «+» and «−» over the player's buttons (HubSmartUi). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_smart_rec_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_smart_rec_row"
+    android:gravity="center_vertical"
+    android:minHeight="44dp"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="4dp"
+    android:visibility="gone">
+
+    <TextView
+        android:id="@+id/player_smart_rec_label"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="?attr/colorOnSecondaryContainer"
+        android:textSize="13sp" />
+
+    <ImageButton
+        android:id="@+id/player_smart_rec_add"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/homemusic_smart_add_playlist"
+        android:src="@drawable/ic_add"
+        app:tint="?attr/colorPrimary" />
+
+    <ImageButton
+        android:id="@+id/player_smart_rec_hide"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/homemusic_smart_hide"
+        android:src="@drawable/ic_minus"
+        app:tint="?attr/colorOnSecondaryContainer" />
+</LinearLayout>

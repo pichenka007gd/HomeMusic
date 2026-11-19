@@ -101,14 +101,21 @@ def _radio(artists: list[dict]) -> list[NdArtistOut]:
     return [artist_out(a) for a in ranked]
 
 
+async def track_count(nd: NavidromeClient) -> int | None:
+    try:
+        return (await nd.get_scan_status()).get("count")
+    except (SubsonicError, httpx.HTTPError):
+        return None
+
+
 @router.get("/home", response_model=NdHomeOut)
 async def home(user: User = Depends(current_user)):
     async def load(nd: NavidromeClient):
         return await asyncio.gather(*(nd.get_album_list2(t, size=HOME_ROW) for t in ("recent", "frequent", "newest", "starred")),
-                                    nd.get_artists())
+                                    nd.get_artists(), track_count(nd))
 
-    recent, frequent, newest, starred, artists = await nd_call(user, load)
-    return NdHomeOut(recent=[album_out(a) for a in recent], frequent=[album_out(a) for a in frequent],
+    recent, frequent, newest, starred, artists, count = await nd_call(user, load)
+    return NdHomeOut(track_count=count, recent=[album_out(a) for a in recent], frequent=[album_out(a) for a in frequent],
                      newest=[album_out(a) for a in newest], starred=[album_out(a) for a in starred],
                      radio=_radio(artists)[:HOME_RADIO])
 

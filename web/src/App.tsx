@@ -27,6 +27,7 @@ import { AssistantTaskPage } from './pages/AssistantTask';
 import { DownloadDetailPage } from './pages/DownloadDetail';
 import { DownloadsPage } from './pages/Downloads';
 import { HomePage } from './pages/Home';
+import { GuestPage } from './pages/Guest';
 import { ImportItemsPage, ImportPage, ImportsPage } from './pages/Import';
 import { LibraryPage } from './pages/Library';
 import { LibraryAlbumPage } from './pages/LibraryAlbum';
@@ -113,6 +114,7 @@ function resolve(route: Route): { tab: Tab | null; node: ReactNode } | null {
 export function App() {
   const [me, setMe] = useState<MeOut | null | undefined>(undefined);
   const [bootError, setBootError] = useState<string>();
+  const [guest, setGuest] = useState<boolean>();
   const route = useRoute();
 
   const boot = useCallback(() => {
@@ -127,6 +129,15 @@ export function App() {
   }, []);
 
   useEffect(boot, [boot]);
+
+  useEffect(() => {
+    if (me !== null || !STANDALONE || guest !== undefined) return;
+    const ctl = new AbortController();
+    api.authOptions(ctl.signal).then((options) => setGuest(!!options.guest_enabled), () => {
+      if (!ctl.signal.aborted) setGuest(false);
+    });
+    return () => ctl.abort();
+  }, [me, guest]);
 
   useEffect(() => {
     const account = me?.id ?? null;
@@ -175,7 +186,7 @@ export function App() {
     navigate(START, { replace: true });
   }, []);
 
-  if (me === undefined) {
+  if (me === undefined || (me === null && STANDALONE && guest === undefined)) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4">
         {bootError ? (
@@ -194,7 +205,7 @@ export function App() {
   if (me === null) {
     return (
       <>
-        <LoginPage onLogin={setMe} />
+        {guest && route.path !== '/login' ? <GuestPage /> : <LoginPage onLogin={setMe} guest={guest} />}
         <Overlays />
       </>
     );

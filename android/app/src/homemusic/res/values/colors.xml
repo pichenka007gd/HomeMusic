@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- HomeMusic: readable subtitle on «Открытия» covers (Tempus #BFBFBF on a light cover was barely visible). -->
+    <color name="gradientSubtitleColor">#E6FFFFFF</color>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home: the toolbar does not collapse while the tab's list scrolls (ViewPager2 keeps the nested scroll), so the
+         list ends a toolbar height below the screen; this adds it to the usual bottom padding (164dp + 64dp). -->
+    <dimen name="homemusic_home_padding_bottom">228dp</dimen>
+</resources>

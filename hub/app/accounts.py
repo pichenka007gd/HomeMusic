@@ -14,7 +14,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth, mailer
@@ -120,7 +120,7 @@ async def register(s: AsyncSession, code: str, username: str, password: str,
 
 
 async def _check_name_free(s: AsyncSession, username: str) -> None:
-    taken = await s.execute(select(User.id).where(func.lower(User.nd_username) == username.lower()))
+    taken = await s.execute(select(User.id).where(User.nd_username.collate("NOCASE") == username))
     if taken.first() is not None:
         raise HTTPException(409, "Это имя уже занято, выберите другое")
 
@@ -274,19 +274,39 @@ def username_from_email(email: str | None) -> str:
     return name if len(name) >= 2 else f"user{secrets.randbelow(10000):04d}"
 
 
-async def google_login(s: AsyncSession, id_token: str, code: str | None, username: str | None
+async def google_login(s: AsyncSession, id_token: str, code: str | None, username: str | None, *, nonce: str | None = None
                        ) -> tuple[User, str, str]:
-    """Sign-in with Google: the linked user, or a new one with an invite code. Returns (user, token, password)."""
+    """Sign-in with Google, optionally provisioning a new Navidrome user."""
+    settings = get_settings()
     claims = await _google_claims(id_token)
+    if nonce is not None and not hmac.compare_digest(nonce.encode(), str(claims.get("nonce", "")).encode()):
+        raise HTTPException(401, "Запрос входа через Google устарел, попробуйте ещё раз")
+    new_public = settings.google_open_signup and not code
+    if new_public:
+        # Keep concurrent registrations for the same Google subject from provisioning two users.
+        await s.execute(text("BEGIN IMMEDIATE"))
     user = (await s.execute(select(User).where(User.google_sub == str(claims["sub"])))).scalar_one_or_none()
     if user is not None:
         password = decrypt(user.nd_password_enc)
+        name = user.nd_username
+        if new_public:
+            await s.commit()
         try:
-            user, token = await auth.login(s, user.nd_username, password)
+            user, token = await auth.login(s, name, password)
         except HTTPException as e:
             if e.status_code != 401:
                 raise
             raise HTTPException(401, "Пароль аккаунта сменили в Navidrome: войдите паролем и привяжите Google снова") from e
+        return user, token, password
+    if new_public:
+        email = claims.get("email")
+        if not email or claims.get("email_verified") not in (True, "true"):
+            raise HTTPException(401, "Google не подтвердил адрес почты")
+        suffix = hmac.digest(settings.hub_secret_key.encode(), f"google:{claims['sub']}".encode(), "sha256").hex()[:16]
+        name = f"google-{suffix}"
+        password = secrets.token_urlsafe(24)
+        user, token = await _create_account(s, name, password, name)
+        user.google_sub, user.google_email = str(claims["sub"]), email
         return user, token, password
     if not code:
         raise HTTPException(409, "Этот Google-аккаунт ещё не привязан. Введите код приглашения, "

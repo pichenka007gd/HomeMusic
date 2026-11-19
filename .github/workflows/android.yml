@@ -1,0 +1,35 @@
+name: Android source
+
+on:
+  push:
+    branches: [master]
+    paths: ['android/**', 'scripts/check-public-*.py', 'scripts/tests/test_check_public*.py', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', 'scripts/check-public-*.py', 'scripts/tests/test_check_public*.py', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check publication boundaries
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_check_public*.py'
+          python3 scripts/check-public-android.py
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      - name: Install Android SDK packages
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.1.0"'
+      - name: Test and assemble without private configuration or signing keys
+        working-directory: android
+        run: ./gradlew testHomemusicDebugUnitTest assembleHomemusicDebug assembleHomemusicRelease --console=plain
+      - name: Inspect the public release APK
+        run: python3 scripts/check-public-apk.py android/app/build/outputs/apk/homemusic/release/app-homemusic-release-unsigned.apk

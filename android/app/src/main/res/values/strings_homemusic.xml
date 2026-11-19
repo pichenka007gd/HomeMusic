@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HomeMusic (Hub integration). The app is Russian-first, so these strings are Russian by default. -->
+<resources>
+    <string name="homemusic_menu_hub">Хаб</string>
+    <string name="homemusic_tab_catalog">Каталог</string>
+    <string name="homemusic_tab_downloads">Загрузки</string>
+    <string name="homemusic_tab_assistant">Ассистент</string>
+    <string name="homemusic_tab_files">Мои файлы</string>
+
+    <string name="homemusic_retry">Повторить</string>
+    <string name="homemusic_open_menu">Разделы</string>
+    <string name="homemusic_server_offline">Нет связи с сервером — играет сохранённая музыка</string>
+    <string name="homemusic_open_settings">Настройки Хаба</string>
+    <string name="homemusic_close">Закрыть</string>
+    <string name="homemusic_hub_unreachable">Не удалось открыть Хаб</string>
+    <string name="homemusic_pick_files">Выберите файлы</string>
+
+    <string name="homemusic_settings_title">HomeMusic</string>
+    <string name="homemusic_settings_hub_url">Адрес Хаба</string>
+    <string name="homemusic_settings_hub_url_dialog">Адрес Хаба на вашем сервере, например http://music-pc.local:8080</string>
+    <string name="homemusic_settings_hub_local_url">Домашний адрес Хаба</string>
+    <string name="homemusic_settings_hub_local_url_dialog">Используется, когда отвечает (дома по Wi-Fi). Оставьте пустым, чтобы всегда ходить через интернет</string>
+    <string name="homemusic_settings_local_none">Не используется</string>
+    <string name="homemusic_settings_economy">Экономия мобильного трафика</string>
+    <string name="homemusic_settings_economy_summary">В мобильной сети и Wi-Fi с лимитом песня сначала грузится на 40 секунд вперёд (целиком — после 30-й секунды), а заранее берётся только начало одной следующей. Звук и скорость переключения те же</string>
+    <string name="homemusic_settings_mix_offline">Микс дня на телефон</string>
+    <string name="homemusic_settings_mix_offline_summary">Песни сегодняшнего микса скачиваются в «Скачанное», когда телефон на зарядке и в безлимитном Wi-Fi; при смене микса прошлые убираются (кроме понравившихся и скачанных вами). Микс играет без мобильного трафика</string>
+    <string name="homemusic_settings_smart_shuffle">Умное перемешивание в режимах</string>
+    <string name="homemusic_settings_smart_shuffle_summary">Кнопка перемешивания в плейлисте и «Понравившихся» проходит три режима: порядок, перемешивание, умное — с рекомендациями между вашими песнями. Выключено — только первые два</string>
+    <string name="homemusic_smart_label_playlist">Рекомендация на основе «%1$s»</string>
+    <string name="homemusic_smart_label_playlist_unnamed">Рекомендация на основе плейлиста</string>
+    <string name="homemusic_smart_label_liked">Рекомендация на основе любимых песен</string>
+    <string name="homemusic_smart_add_playlist">Добавить в плейлист</string>
+    <string name="homemusic_smart_add_liked">В понравившиеся</string>
+    <string name="homemusic_smart_hide">Не рекомендовать здесь</string>
+    <string name="homemusic_smart_added">Добавлено в плейлист</string>
+    <string name="homemusic_smart_downloading">Скачивается и появится в плейлисте</string>
+    <string name="homemusic_smart_liked">Добавлено в понравившиеся</string>
+    <string name="homemusic_smart_hidden">Больше не рекомендуется в этом списке</string>
+    <string name="homemusic_smart_failed">Не получилось: попробуйте ещё раз</string>
+    <string name="homemusic_smart_unavailable">Умное перемешивание сейчас недоступно: играет обычное перемешивание</string>
+    <string name="homemusic_smart_unavailable_list">Умное перемешивание есть только у плейлистов и «Понравившихся»</string>
+    <string name="homemusic_smart_offline">Нет сети: играет обычное перемешивание</string>
+    <string name="homemusic_smart_starting">Подбираем рекомендации…</string>
+    <string name="homemusic_smart_shuffle_on">Умное перемешивание включено</string>
+    <string name="homemusic_settings_mix_offline_held">%1$d песен, %2$s на телефоне</string>
+    <string name="homemusic_settings_traffic">Мобильный трафик плеера</string>
+    <string name="homemusic_settings_traffic_summary">Сегодня: %1$s (песни %2$s, начала следующих %3$s)\nЗа 7 дней: %4$s (песни %5$s, начала следующих %6$s)</string>
+    <string name="homemusic_settings_traffic_system">\nВсё приложение за 7 дней: %1$s</string>
+    <string name="homemusic_settings_traffic_hint">Считается только в сети с лимитом. Нажмите, чтобы обновить</string>
+    <string name="homemusic_size_mb">%1$.1f МБ</string>
+    <string name="homemusic_size_gb">%1$.2f ГБ</string>
+    <string name="homemusic_settings_check_update">Проверить обновления</string>
+    <string name="homemusic_settings_version">Установлена версия %1$s (%2$d)</string>
+
+    <string name="homemusic_channel_name">Ассистент Хаба</string>
+    <string name="homemusic_channel_description">Статусы задач ассистента</string>
+    <string name="homemusic_offline_sync_notification">Синхронизация офлайн-библиотеки</string>
+    <string name="homemusic_notify_task_ready">Ассистент распознал треки</string>
+    <string name="homemusic_notify_task_confirm">Проверьте и подтвердите список</string>
+    <string name="homemusic_notify_task_failed">Ассистент: ошибка</string>
+    <string name="homemusic_notify_task_open">Откройте задачу, чтобы узнать подробности</string>
+
+    <string name="homemusic_share_label">HomeMusic</string>
+    <string name="homemusic_share_login_first">Сначала войдите в аккаунт Navidrome в HomeMusic</string>
+    <string name="homemusic_share_unsupported">Этот тип файлов не поддерживается. Поделитесь скриншотом, аудиофайлом или ссылкой.</string>
+    <string name="homemusic_share_connecting">Подключаюсь к Хабу…</string>
+    <plurals name="homemusic_share_sending_images">
+        <item quantity="one">Отправляю %d скриншот ассистенту…</item>
+        <item quantity="few">Отправляю %d скриншота ассистенту…</item>
+        <item quantity="many">Отправляю %d скриншотов ассистенту…</item>
+        <item quantity="other">Отправляю %d скриншота ассистенту…</item>
+    </plurals>
+    <string name="homemusic_share_uploading">Загружаю файлы в Хаб: %1$d из %2$d…</string>
+    <string name="homemusic_share_sending_link">Передаю ассистенту…</string>
+    <string name="homemusic_share_images_sent">Скриншоты отправлены ассистенту</string>
+    <string name="homemusic_share_audio_sent">Загружено файлов: %1$d. Заполните форму импорта</string>
+    <string name="homemusic_share_partial_error">Не загружен: %1$s</string>
+    <string name="homemusic_share_failed">Не удалось отправить в Хаб</string>
+
+    <string name="homemusic_update_checking">Проверяю обновления…</string>
+    <string name="homemusic_update_latest">Установлена последняя версия (%1$s)</string>
+    <string name="homemusic_update_failed">Не удалось обновить: %1$s</string>
+    <string name="homemusic_update_title">Доступно обновление HomeMusic</string>
+    <string name="homemusic_update_message">Сейчас установлена версия %1$s, доступна %2$s.</string>
+    <string name="homemusic_update_install">Установить</string>
+    <string name="homemusic_update_later">Позже</string>
+    <string name="homemusic_update_skip">Пропустить</string>
+    <string name="homemusic_update_allow_install">Разрешите HomeMusic устанавливать приложения и нажмите «Установить» ещё раз</string>
+    <string name="homemusic_update_size_mib">%1$.2f МиБ</string>
+    <string name="homemusic_update_size_kib">%1$.1f КиБ</string>
+    <string name="homemusic_update_preparing">Собираю обновление</string>
+    <string name="homemusic_update_full_fallback">Не удалось применить обновление. Скачать полный APK (%1$s)?</string>
+    <string name="homemusic_update_full_download">Скачать</string>
+    <string name="homemusic_update_downloading">Скачиваю обновление</string>
+    <string name="homemusic_update_metered">Сейчас мобильная сеть: обновление займёт около %1$s трафика. Лучше дождаться Wi-Fi.</string>
+    <string name="homemusic_update_install_metered">Скачать сейчас (%1$s)</string>
+    <string name="homemusic_update_wait_wifi">Дождусь Wi-Fi</string>
+    <string name="homemusic_update_progress">%1$.1f из %2$.1f МБ</string>
+    <string name="homemusic_update_progress_unknown">%1$.1f МБ</string>
+
+    <string name="homemusic_liked_songs">Понравившиеся</string>
+    <string name="homemusic_liked_songs_hint">Нажмите ♡ у трека, чтобы он появился здесь</string>
+    <plurals name="homemusic_tracks_count">
+        <item quantity="one">%d трек</item>
+        <item quantity="few">%d трека</item>
+        <item quantity="many">%d треков</item>
+        <item quantity="other">%d трека</item>
+    </plurals>
+    <string name="homemusic_folders_hide">Скрыть</string>
+    <string name="homemusic_folders_hide_title">Скрыть раздел «Папки»?</string>
+    <string name="homemusic_folders_hide_message">%1$s останется на сервере, с экрана библиотеки пропадёт только этот раздел. Вернуть его можно в настройках: «Показывать папки».</string>
+    <string name="homemusic_folders_hidden">Раздел «Папки» скрыт</string>
+    <string name="homemusic_undo">Вернуть</string>
+    <string name="homemusic_cancel">Отмена</string>
+    <string name="homemusic_play_failed">Не удалось включить: Navidrome не нашёл трек</string>
+    <string name="homemusic_hub_download_track">Скачать в библиотеку</string>
+    <string name="homemusic_hub_download_queued">Скачивается в библиотеку</string>
+    <string name="homemusic_hub_like_pending">Уже в «Понравившихся»</string>
+    <string name="homemusic_hub_already_owned">Уже есть в библиотеке</string>
+    <string name="homemusic_hub_action_failed">Хаб: %1$s</string>
+    <!-- The library without the server (HomeOffline) -->
+    <string name="homemusic_offline_nothing">Не скачано на телефон</string>
+    <string name="homemusic_downloaded_on_phone">Скачано на телефон</string>
+    <string name="homemusic_downloading_to_phone">Скачивается на телефон</string>
+
+    <!-- sign-in -->
+    <string name="homemusic_login_title">HomeMusic</string>
+    <string name="homemusic_login_server_subtitle">Выберите свой сервер HomeMusic</string>
+    <string name="homemusic_login_server">Navidrome: IP или адрес сервера</string>
+    <string name="homemusic_login_server_helper">Укажите IP или имя ПК в своей сети. Без порта используется 4533.</string>
+    <string name="homemusic_login_server_reset">Вернуть адрес по умолчанию</string>
+    <string name="homemusic_login_next">Далее</string>
+    <string name="homemusic_login_server_bad">Укажите IP или адрес Navidrome, например http://music-pc.local:4533</string>
+    <string name="homemusic_login_server_unreachable">Сервер не отвечает. Проверьте адрес и подключение к своей сети</string>
+    <string name="homemusic_login_server_not_music">По этому адресу нет сервера музыки</string>
+    <string name="homemusic_login_account_subtitle">Войдите в свой аккаунт</string>
+    <string name="homemusic_login_register_subtitle">Новый аккаунт по коду приглашения</string>
+    <string name="homemusic_login_google_register_subtitle">Google-аккаунт %1$s ещё не привязан. Введите код приглашения и выберите имя</string>
+    <string name="homemusic_login_change_server">Изменить</string>
+    <string name="homemusic_login_code">Код приглашения</string>
+    <string name="homemusic_login_user">Имя</string>
+    <string name="homemusic_login_password">Пароль</string>
+    <string name="homemusic_login_password2">Пароль ещё раз</string>
+    <string name="homemusic_login_sign_in">Войти</string>
+    <string name="homemusic_login_create">Создать аккаунт</string>
+    <string name="homemusic_login_google">Войти через Google</string>
+    <string name="homemusic_login_to_register">Регистрация по коду</string>
+    <string name="homemusic_login_to_account">У меня уже есть аккаунт</string>
+    <string name="homemusic_login_required">Заполните это поле</string>
+    <string name="homemusic_login_mismatch">Пароли не совпадают</string>
+    <string name="homemusic_login_short_password">Пароль — не короче 6 символов</string>
+    <string name="homemusic_login_wrong">Неверное имя или пароль</string>
+    <string name="homemusic_login_no_network">Нет связи с сервером</string>
+    <string name="homemusic_login_hint">Аккаунт создаётся по приглашению: код даёт администратор</string>
+    <string name="homemusic_login_register_hint">Имя — латиницей или по-русски, без пробелов. Пароль — не короче 6 символов</string>
+    <string name="homemusic_login_no_hub">Регистрация недоступна: нет связи с Хабом</string>
+    <string name="homemusic_login_user_or_email">Имя или почта</string>
+    <string name="homemusic_login_to_email">Регистрация по почте</string>
+    <string name="homemusic_login_hint_email">Аккаунт создаётся по почте или по приглашению администратора</string>
+    <string name="homemusic_login_email_subtitle">Новый аккаунт по почте</string>
+    <string name="homemusic_login_email_sent">Письмо с кодом отправлено на %1$s. Если его нет, загляните в «Спам»</string>
+    <string name="homemusic_login_email">Почта</string>
+    <string name="homemusic_login_email_bad">Проверьте адрес почты</string>
+    <string name="homemusic_login_email_code">Код из письма</string>
+    <string name="homemusic_login_email_send">Получить код</string>
+    <string name="homemusic_login_email_resend">Отправить ещё раз</string>
+    <string name="homemusic_login_email_resend_in">Отправить ещё раз через %1$d с</string>
+    <string name="homemusic_login_email_hint">Пришлём на почту код из 6 цифр: он подтвердит, что адрес ваш</string>
+    <string name="homemusic_google_failed">Не удалось войти через Google: %1$s</string>
+    <string name="homemusic_google_no_account">На телефоне нет аккаунта Google</string>
+    <string name="homemusic_google_unavailable">Вход через Google не работает на этом телефоне (нет сервисов Google)</string>
+    <string name="homemusic_settings_google">Вход через Google</string>
+    <string name="homemusic_settings_admin">Пользователи и приглашения</string>
+    <string name="homemusic_settings_admin_summary">Расходы на ИИ, песни каждого, коды для новых людей</string>
+    <string name="homemusic_settings_google_off">Не привязан. Нажмите, чтобы привязать</string>
+    <string name="homemusic_settings_google_on">Привязан: %1$s</string>
+    <string name="homemusic_settings_google_linked">Google-аккаунт привязан</string>
+    <string name="homemusic_settings_google_unlink">Отвязать Google-аккаунт %1$s? Входить можно будет только паролем</string>
+    <string name="homemusic_settings_google_unlink_ok">Отвязать</string>
+    <string name="homemusic_settings_google_unlinked">Google-аккаунт отвязан</string>
+    <string name="homemusic_settings_leave">Выйти</string>
+    <string name="homemusic_leave_title">Выйти с сервера?</string>
+    <string name="homemusic_leave_message">Телефон забудет аккаунт %1$s на сервере %2$s, музыка остановится. Чтобы вернуться, снова выберите сервер и войдите.</string>
+    <string name="homemusic_leave_ok">Выйти</string>
+    <string name="homemusic_share_title">Отправить</string>
+    <string name="homemusic_selection_count">Выбрано: %1$d</string>
+    <string name="homemusic_selection_close">Отменить выбор</string>
+    <string name="homemusic_selection_toggle">Выбрать</string>
+    <string name="homemusic_selection_more">Действия с треком</string>
+    <string name="homemusic_selection_all">Выбрать все</string>
+    <string name="homemusic_selection_like">В понравившиеся</string>
+    <string name="homemusic_selection_unlike">Убрать из понравившихся</string>
+    <string name="homemusic_liked_remove">Удалить из понравившихся</string>
+    <string name="homemusic_selection_play">Слушать</string>
+    <string name="homemusic_selection_play_next">Играть следующими</string>
+    <string name="homemusic_selection_queue">В очередь</string>
+    <string name="homemusic_selection_playlist">В плейлист</string>
+    <string name="homemusic_selection_download">Скачать на телефон</string>
+    <string name="homemusic_selection_remove">Удалить с телефона</string>
+    <string name="homemusic_selection_remove_message">Файлы удалятся только с этого телефона: в библиотеке и в понравившихся треки останутся.</string>
+    <string name="homemusic_selection_remove_ok">Удалить</string>
+    <plurals name="homemusic_selection_remove_title">
+        <item quantity="one">Удалить %d трек с телефона?</item>
+        <item quantity="few">Удалить %d трека с телефона?</item>
+        <item quantity="many">Удалить %d треков с телефона?</item>
+        <item quantity="other">Удалить %d трека с телефона?</item>
+    </plurals>
+    <plurals name="homemusic_selection_unliked">
+        <item quantity="one">%d трек убран из понравившихся</item>
+        <item quantity="few">%d трека убраны из понравившихся</item>
+        <item quantity="many">%d треков убрано из понравившихся</item>
+        <item quantity="other">%d трека убрано из понравившихся</item>
+    </plurals>
+
+    <!-- Folder page («Music Library»): search over its artists -->
+    <string name="homemusic_index_search">Поиск исполнителя</string>
+    <string name="homemusic_index_search_empty">Ничего не найдено</string>
+
+    <!-- «Не нравится» (listening data for the mixes): the track menu and the player -->
+    <string name="homemusic_dislike">Не нравится</string>
+    <string name="homemusic_disliked">Трек не будет попадать в миксы</string>
+    <string name="homemusic_dislike_undo">Отменить</string>
+    <!-- the cover pager, the next track while continuous play gets it (QueueAhead) -->
+    <string name="homemusic_player_next_loading">Подбираем следующую песню…</string>
+
+    <!-- «Моя волна» and «Микс дня» (MIXES.md 6, 7): Главная, the track menu -->
+    <string name="homemusic_wave_by_artist">Волна по исполнителю</string>
+    <string name="homemusic_wave_by_track">Волна по треку</string>
+    <string name="homemusic_wave_title">Моя волна</string>
+    <string name="homemusic_wave_subtitle">Бесконечно, под ваш вкус</string>
+    <string name="homemusic_wave_starting">Собираем волну…</string>
+    <string name="homemusic_wave_empty">Волне пока нечего предложить</string>
+    <string name="homemusic_wave_failed">Хаб недоступен — волна не запустилась</string>
+    <string name="homemusic_mix_title">Микс дня</string>
+    <string name="homemusic_mix_building">Собираем…</string>
+    <string name="homemusic_mix_onboarding">Выберите исполнителей</string>
+    <string name="homemusic_mix_none">Появится утром</string>
+    <string name="homemusic_mix_play">Слушать микс дня</string>
+    <plurals name="homemusic_mix_songs">
+        <item quantity="one">%d песня</item>
+        <item quantity="few">%d песни</item>
+        <item quantity="many">%d песен</item>
+        <item quantity="other">%d песни</item>
+    </plurals>
+    <string name="track_info_source">Источник</string>
+    <string name="homemusic_full_track_unavailable">Полная версия песни пока недоступна. Попробуйте позже.</string>
+    <string name="homemusic_login_hub">Адрес Хаба</string>
+    <string name="homemusic_login_hub_helper">Если поле пустое — тот же ПК, порт 8080. При другом порте укажите полный адрес.</string>
+    <string name="homemusic_login_hub_bad">Укажите адрес Хаба, например http://music-pc.local:8080</string>
+    <string name="homemusic_login_lan_permission">Для подключения к своему серверу разрешите приложению доступ к локальной сети.</string>
+</resources>

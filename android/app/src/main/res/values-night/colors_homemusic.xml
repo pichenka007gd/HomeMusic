@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The PWA's color-danger, dark theme -->
+    <color name="homemusic_danger">#F26B63</color>
+</resources>

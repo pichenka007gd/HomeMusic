@@ -13,7 +13,6 @@ from app.providers.base import Candidate
 @pytest.fixture
 def proxy_settings(monkeypatch):
     settings = SimpleNamespace(outbound_proxy="http://proxy:10809", proxy_hosts={"googlevideo.com", "soundcloud.com"})
-    monkeypatch.setattr(ytdlp, "get_settings", lambda: settings)
     monkeypatch.setattr("app.net.get_settings", lambda: settings)
     return settings
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hub PWA palette (web/tailwind), so the native tabs blend with the embedded page. -->
+<resources>
+    <color name="hub_background">#0B0B0B</color>
+    <color name="hub_text">#F5F5F5</color>
+    <color name="hub_text_dim">#8A8A8A</color>
+    <color name="hub_accent">#1ED760</color>
+    <!-- The PWA's color-danger (light theme here, dark in values-night) -->
+    <color name="homemusic_danger">#BA1A1A</color>
+</resources>

@@ -208,7 +208,7 @@ const ndSong = (id: string) => libTracks.find((t) => `nd${t.id}` === id);
 
 // --- downloads ----------------------------------------------------------------------------------
 
-type DL = Json & { id: number; batch_id: number; status: string; progress: number; artist: string; title: string; ref?: string };
+type DL = Json & { id: number; batch_id: number; status: string; progress: number; artist: string; title: string; ref?: string; candidates?: Json[] };
 let dlSeq = 300;
 let batchSeq = 40;
 const hitmozCand = (artist: string, title: string, i: number) => ({
@@ -462,7 +462,7 @@ function impItemState(m: Imp, it: ImpItem): Json {
   if (it.skipped) return { status: 'skipped' };
   if (it.picked) {
     const d = downloads.find((x) => x.id === it.picked);
-    return { status: 'queued', download_item_id: it.picked, download_status: d?.status ?? 'queued' };
+    return { status: d?.status === 'done' ? 'done' : 'queued', match: 'manual', download_item_id: it.picked, download_status: d?.status ?? 'queued' };
   }
   if (m.started == null || (it.match !== 'owned' && s < (6000 * (i + 1)) / Math.max(1, sel.length))) return { status: it.match === 'owned' ? 'done' : 'pending', match: it.match === 'owned' ? 'owned' : null };
   if (coll.kind === 'dislikes') return { status: 'skipped' };
@@ -494,7 +494,7 @@ function impOut(m: Imp) {
     error: null,
     stats: {
       tracks: tracks.length, owned, to_download: toDownload, est_bytes: toDownload * 9_400_000, free_bytes: 412_000_000_000,
-      pending: count((o) => o.status === 'pending'), exact: count((o) => o.match === 'exact'), probable: count((o) => o.match === 'probable'),
+      pending: count((o) => o.status === 'pending'), exact: count((o) => o.match === 'exact' || o.match === 'manual'), probable: count((o) => o.match === 'probable'),
       not_found: count((o) => o.status === 'not_found'), waiting: count((o) => o.status === 'waiting'),
       downloading: count((o) => o.status === 'queued'), done: count((o) => o.status === 'done' && o.match !== 'owned'), failed: 0,
     },
@@ -1207,7 +1207,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
   mm = p.match(/^\/api\/downloads\/(\d+)$/);
   if (mm) {
     const d = downloads.find((x) => x.id === Number(mm![1]));
-    return d ? send(res, 200, { ...dlOut(d), candidates: d.candidates ?? [] }) : send(res, 404, { detail: 'Загрузка не найдена' }), true;
+    if (!d) return send(res, 404, { detail: 'Загрузка не найдена' }), true;
+    const candidates = d.candidates ?? [];
+    const previewRefs = candidates.filter((c) => c.provider !== 'soulseek').map((c) => {
+      const ref = `file:${c.provider}:${c.provider_id}`;
+      shownFiles.set(ref, c);
+      return ref;
+    });
+    return send(res, 200, { ...dlOut(d), candidates, preview_refs: previewRefs }), true;
   }
   mm = p.match(/^\/api\/downloads\/items\/(\d+)\/(retry|cancel)$/);
   if (mm) {
@@ -1543,7 +1550,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolea
     await delay(300);
     const all = libAlbums.map((a) => ndAlbumOut(a));
     const artists = ndArtists().sort((a, b) => Number(b.starred) - Number(a.starred) || b.album_count - a.album_count);
-    return send(res, 200, { recent: [...all].reverse(), frequent: all.slice(0, 3), newest: all, starred: all.filter((a) => a.starred), radio: artists }), true;
+    return send(res, 200, { track_count: libTracks.length, recent: [...all].reverse(), frequent: all.slice(0, 3), newest: all, starred: all.filter((a) => a.starred), radio: artists }), true;
   }
   if (p === '/api/nd/liked') {
     await delay(300);

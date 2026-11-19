@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Outline of the sign-in fields: the theme's outline color is near black, so unfocused fields vanished -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorPrimary" android:state_focused="true" />
+    <item android:alpha="0.38" android:color="?attr/colorOnSurfaceVariant" android:state_enabled="false" />
+    <item android:alpha="0.6" android:color="?attr/colorOnSurfaceVariant" />
+</selector>

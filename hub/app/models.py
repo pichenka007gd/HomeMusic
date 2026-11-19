@@ -31,6 +31,11 @@ class User(Base):
     # the confirmed email the account registered with (lower case): sign-in by it, too
     email: Mapped[str | None] = mapped_column(String(320), unique=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    yandex_import_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+# Navidrome looks up usernames using SQLite's ASCII case-insensitive collation.
+Index("uq_users_nd_username_nocase", User.nd_username.collate("NOCASE"), unique=True)
 
 
 class SearchHistory(Base):
@@ -42,6 +47,15 @@ class SearchHistory(Base):
     query_key: Mapped[str] = mapped_column(String(1024), primary_key=True)
     query: Mapped[str] = mapped_column(String(512))
     searched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class GuestUsage(Base):
+    __tablename__ = "guest_usage"
+
+    profile: Mapped[str] = mapped_column(String(64), primary_key=True)
+    action: Mapped[str] = mapped_column(String(16), primary_key=True)
+    minute: Mapped[int] = mapped_column(Integer, index=True)
+    requests: Mapped[int] = mapped_column(Integer)
 
 
 class AssistantDailyUsage(Base):

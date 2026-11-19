@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
         catalog,
         downloads,
         events,
+        guest,
         imports,
         insights,
         library,
@@ -98,7 +99,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="HomeMusic Hub", version="0.1.0", lifespan=lifespan, docs_url="/api/docs",
                   openapi_url="/api/openapi.json", redoc_url=None)
-    for r in (auth.router, search.router, catalog.router, downloads.router, listen.router, library.router, medialib.router,
+    for r in (auth.router, guest.router, search.router, catalog.router, downloads.router, listen.router, library.router, medialib.router,
               uploads.router, playlists.router, plays.router, mixes.router, wave.router, smart_shuffle.router, imports.router, events.router, system.router, admin.router,
               insights.router):
         app.include_router(r)

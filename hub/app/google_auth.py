@@ -63,7 +63,7 @@ async def _fetch_keys(client: httpx.AsyncClient | None = None) -> None:
 
 
 async def _key(kid: str) -> rsa.RSAPublicKey:
-    if kid not in _keys or time.time() > _keys_until:
+    if not _keys or time.time() > _keys_until:
         await _fetch_keys()
     key = _keys.get(kid)
     if key is None:
@@ -83,6 +83,8 @@ async def verify_id_token(token: str) -> dict[str, Any]:
         signature = _b64(sig_b64)
     except (ValueError, json.JSONDecodeError) as e:
         raise GoogleTokenError("malformed token") from e
+    if not isinstance(header, dict) or not isinstance(claims, dict):
+        raise GoogleTokenError("malformed token")
     if header.get("alg") != "RS256":
         raise GoogleTokenError("unexpected algorithm")
     key = await _key(str(header.get("kid")))

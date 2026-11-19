@@ -26,6 +26,7 @@ hub/app/static/
 # local data
 .agent-work/
 data/
+/release/
 eval/screenshots/
 eval/results/
 # manual design-review screenshots (only screenshot-test baselines go into git)
@@ -33,8 +34,7 @@ design-review/after/
 design-review/shots/
 *.log
 
-# Android app: separate git repo (fork of Tempus), see android/ README
-android/
+# Android sources are public; local configuration and outputs stay in android/.gitignore.
 
 # Agent instructions and journals are kept out of the public repository
 CLAUDE.md

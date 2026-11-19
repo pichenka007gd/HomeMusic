@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- One row of a bottom-sheet action list: icon, then label. HomeSheetIcons.normalize() sizes the
+         icons to 24dp, since the drawables come in 20dp and 24dp. -->
+    <style name="HomeMusicSheetAction" parent="LabelMedium">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:gravity">center_vertical|start</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:drawablePadding">20dp</item>
+        <item name="android:drawableTint">@color/titleTextColor</item>
+    </style>
+
+    <!-- A field of the sign-in screen (HomeLogin) -->
+    <style name="HomeMusicLoginField" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxStrokeColor">@color/homemusic_login_box_stroke</item>
+    </style>
+
+    <!-- A rounded search line with a magnifier and a clear button -->
+    <style name="HomeMusicSearchField" parent="Widget.Material3.TextInputLayout.OutlinedBox.Dense">
+        <item name="boxStrokeColor">@color/homemusic_login_box_stroke</item>
+        <item name="boxCornerRadiusTopStart">24dp</item>
+        <item name="boxCornerRadiusTopEnd">24dp</item>
+        <item name="boxCornerRadiusBottomStart">24dp</item>
+        <item name="boxCornerRadiusBottomEnd">24dp</item>
+        <item name="startIconDrawable">@drawable/ic_search</item>
+        <item name="endIconMode">clear_text</item>
+        <item name="hintEnabled">false</item>
+    </style>
+</resources>
